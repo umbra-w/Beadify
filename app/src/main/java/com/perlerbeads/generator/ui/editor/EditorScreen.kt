@@ -1,7 +1,6 @@
 package com.perlerbeads.generator.ui.editor
 
 import android.content.Intent
-import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -98,17 +97,6 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class EditorTool { BRUSH, ERASER, FLOOD, REPLACE }
-
-/** 手势诊断日志标签（定位双指缩放问题用，问题关闭后移除）。 */
-private const val TAG = "PerlerGesture"
-
-/** 手势诊断：logcat + 应用私有文件（logcat 缓冲会被 MIUI 系统日志轮转冲掉）。 */
-private fun gestureLog(context: android.content.Context?, msg: String) {
-    Log.d(TAG, msg)
-    if (context != null) runCatching {
-        java.io.File(context.filesDir, "gesture.log").appendText("${System.currentTimeMillis()} $msg\n")
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,7 +235,6 @@ fun EditorScreen(vm: AppViewModel) {
                     // 主手势处理器在 Main pass 优先消费事件；只有主处理器未消费时它才会接管，
                     // 用于在主处理器双指路径失效的设备上保底缩放。
                     val fallbackState = rememberTransformableState { zoomChange, panChange, _ ->
-                        gestureLog(context, "editor FALLBACK transformable zoom=$zoomChange pan=$panChange")
                         if (zoomChange.isFinite() && zoomChange > 0f) {
                             zoom = (zoom * zoomChange).coerceIn(zoomMinNow(), zoomMax)
                         }
@@ -262,10 +249,6 @@ fun EditorScreen(vm: AppViewModel) {
                             .fillMaxSize()
                             .transformable(fallbackState)
                             .pointerInput(grid, containerSize) {
-                                runCatching {
-                                    java.io.File(context.filesDir, "gesture.log").writeText("")
-                                }
-                                gestureLog(context, "editor handler started")
                                 // 统一手势：单指=工具（单击/拖动连涂/长按洪水擦除），双指=缩放平移
                                 val slopPx = viewConfiguration.touchSlop
                                 val longPressTimeout = viewConfiguration.longPressTimeoutMillis
@@ -273,7 +256,6 @@ fun EditorScreen(vm: AppViewModel) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val downCell = cellAt(down.position)
-                                    gestureLog(context, "editor down pos=${down.position} cell=$downCell")
                                     var mode = 0            // 0 待定 1 工具 2 缩放平移
                                     var painting = false    // 笔画进行中
                                     var longFired = false
@@ -281,18 +263,11 @@ fun EditorScreen(vm: AppViewModel) {
                                     var lastCell: Pair<Int, Int>? = null
                                     var last = down.position
                                     var lastPointerId = down.id
-                                    var lastReportedCount = 1
 
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         val pressed = event.changes.filter { it.pressed }
                                         if (pressed.isEmpty()) break
-
-                                        gestureLog(
-                                            context,
-                                            "editor evt n=${pressed.size} " +
-                                                event.changes.joinToString { c -> "${c.id}:${if (c.pressed) "P" else "u"}@${c.position}" }
-                                        )
 
                                         if (pressed.size >= 2) {
                                             // 双指：回滚误涂笔画（捏合不应落笔），进入缩放平移
@@ -302,7 +277,6 @@ fun EditorScreen(vm: AppViewModel) {
                                             val panChange = event.calculatePan()
                                             if (zoomChange.isFinite() && zoomChange > 0f) {
                                                 zoom = (zoom * zoomChange).coerceIn(zoomMinNow(), zoomMax)
-                                                gestureLog(context, "editor zoom -> $zoom")
                                             }
                                             if (panChange.x.isFinite() && panChange.y.isFinite()) {
                                                 offset = clampOffset(offset + panChange)
