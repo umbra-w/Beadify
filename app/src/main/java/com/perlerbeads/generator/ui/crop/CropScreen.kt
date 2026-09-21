@@ -1,6 +1,7 @@
 package com.perlerbeads.generator.ui.crop
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,7 +14,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -32,13 +35,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.perlerbeads.generator.navigation.Screen
@@ -46,8 +52,12 @@ import com.perlerbeads.generator.ui.editor.AppViewModel
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 private const val MIN_RECT = 0.05f
+
+/** 手势诊断日志标签（定位双指缩放问题用，问题关闭后移除）。 */
+private const val TAG = "PerlerGesture"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,26 +99,29 @@ fun CropScreen(vm: AppViewModel) {
                     offX = 0f; offY = (containerSize.height - baseH) / 2f
                 }
 
-                // 图片层（可缩放平移，手势统一由上层裁剪遮罩 Canvas 处理）
+                // 图片层：内容左上角固定在 (offX, offY)，缩放/平移围绕内容左上角，
+                // 与裁剪框的绘制/命中数学（rect*base*zoom + off + pan）严格一致。
+                // 旧实现用 fillMaxSize+graphicsLayer 围绕容器原点缩放，图片有留白时
+                // 一缩放内容就偏离数学位置，表现为"缩放错位/无法缩放"。
+                val density = LocalDensity.current
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .clipToBounds()
                 ) {
-                    Box(
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
                         modifier = Modifier
+                            .offset { IntOffset(offX.roundToInt(), offY.roundToInt()) }
+                            .size(with(density) { baseW.toDp() }, with(density) { baseH.toDp() })
                             .graphicsLayer {
                                 scaleX = imgZoom; scaleY = imgZoom
                                 translationX = imgPan.x; translationY = imgPan.y
-                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                                transformOrigin = TransformOrigin(0f, 0f)
                             }
-                    ) {
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    )
                 }
 
                 // 裁剪框遮罩层（固定不缩放），并承载全部手势：
@@ -156,6 +169,8 @@ fun CropScreen(vm: AppViewModel) {
                                 var anchor = Offset.Zero      // mode 3 的起点（归一化）
                                 var savedRect = rect          // mode 3 失败时回滚
                                 var lastUpTimeThis = down.uptimeMillis
+                                var lastPointerId = down.id
+                                var lastReportedCount = 1
 
                                 while (true) {
                                     val event = awaitPointerEvent()
@@ -165,13 +180,23 @@ fun CropScreen(vm: AppViewModel) {
                                         break
                                     }
 
+                                    if (pressed.size != lastReportedCount) {
+                                        Log.d(
+                                            TAG, "crop pointers=${pressed.size} " +
+                                                "zoomChange=${event.calculateZoom()} mode=$mode"
+                                        )
+                                        lastReportedCount = pressed.size
+                                    }
+
                                     if (pressed.size >= 2) {
                                         // 双指：缩放 + 平移，一旦进入即接管整次手势
+                                        if (mode == 3) rect = savedRect // 新建选框被中断则回滚
                                         mode = 2
                                         val zoomChange = event.calculateZoom()
                                         val panChange = event.calculatePan()
                                         if (zoomChange.isFinite() && zoomChange > 0f) {
                                             imgZoom = (imgZoom * zoomChange).coerceIn(1f, 6f)
+                                            Log.d(TAG, "crop imgZoom -> $imgZoom")
                                         }
                                         if (panChange.x.isFinite() && panChange.y.isFinite()) {
                                             imgPan = clampPan(
@@ -181,17 +206,22 @@ fun CropScreen(vm: AppViewModel) {
                                         }
                                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                                         last = pressed[0].position
+                                        lastPointerId = pressed[0].id
                                         continue
                                     }
 
                                     val change = pressed[0]
 
                                     if (mode == 2) {
-                                        // 双指抬起一根：剩余单指继续平移
-                                        imgPan = clampPan(
-                                            imgPan + (change.position - last), baseW, baseH, offX, offY,
-                                            containerSize, imgZoom
-                                        )
+                                        // 双指抬起一根：剩余单指继续平移（换指时只重置基准不跳变）
+                                        if (change.id != lastPointerId) {
+                                            lastPointerId = change.id
+                                        } else {
+                                            imgPan = clampPan(
+                                                imgPan + (change.position - last), baseW, baseH, offX, offY,
+                                                containerSize, imgZoom
+                                            )
+                                        }
                                         last = change.position
                                         if (change.positionChanged()) change.consume()
                                         continue

@@ -1,6 +1,7 @@
 package com.perlerbeads.generator.ui.editor
 
 import android.content.Intent
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -93,6 +94,9 @@ import kotlin.math.min
 
 enum class EditorTool { BRUSH, ERASER, FLOOD, REPLACE }
 
+/** 手势诊断日志标签（定位双指缩放问题用，问题关闭后移除）。 */
+private const val TAG = "PerlerGesture"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(vm: AppViewModel) {
@@ -173,20 +177,31 @@ fun EditorScreen(vm: AppViewModel) {
                                     var pastSlop = false
                                     var lastCell: Pair<Int, Int>? = null
                                     var last = down.position
+                                    var lastPointerId = down.id
+                                    var lastReportedCount = 1
 
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         val pressed = event.changes.filter { it.pressed }
                                         if (pressed.isEmpty()) break
 
+                                        if (pressed.size != lastReportedCount) {
+                                            Log.d(
+                                                TAG, "editor pointers=${pressed.size} " +
+                                                    "zoomChange=${event.calculateZoom()} mode=$mode"
+                                            )
+                                            lastReportedCount = pressed.size
+                                        }
+
                                         if (pressed.size >= 2) {
-                                            // 双指：中断笔画，进入缩放平移
-                                            if (painting) { vm.endStroke(); painting = false }
+                                            // 双指：回滚误涂笔画（捏合不应落笔），进入缩放平移
+                                            if (painting) { vm.cancelStroke(); painting = false }
                                             mode = 2
                                             val zoomChange = event.calculateZoom()
                                             val panChange = event.calculatePan()
                                             if (zoomChange.isFinite() && zoomChange > 0f) {
                                                 zoom = (zoom * zoomChange).coerceIn(0.5f, 12f)
+                                                Log.d(TAG, "editor zoom -> $zoom")
                                             }
                                             if (panChange.x.isFinite() && panChange.y.isFinite()) {
                                                 offset = clampEditorOffset(
@@ -196,17 +211,22 @@ fun EditorScreen(vm: AppViewModel) {
                                             }
                                             event.changes.forEach { if (it.positionChanged()) it.consume() }
                                             last = pressed[0].position
+                                            lastPointerId = pressed[0].id
                                             continue
                                         }
 
                                         val change = pressed[0]
 
                                         if (mode == 2) {
-                                            // 双指抬一根：剩余单指继续平移
-                                            offset = clampEditorOffset(
-                                                offset + (change.position - last), cw, ch,
-                                                grid.n * baseCell * zoom, grid.m * baseCell * zoom
-                                            )
+                                            // 双指抬一根：剩余单指继续平移（换指时只重置基准不跳变）
+                                            if (change.id != lastPointerId) {
+                                                lastPointerId = change.id
+                                            } else {
+                                                offset = clampEditorOffset(
+                                                    offset + (change.position - last), cw, ch,
+                                                    grid.n * baseCell * zoom, grid.m * baseCell * zoom
+                                                )
+                                            }
                                             last = change.position
                                             if (change.positionChanged()) change.consume()
                                             continue

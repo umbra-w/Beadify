@@ -303,6 +303,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         strokeChanged = false
     }
 
+    /** 取消进行中的笔画并回滚已涂的格子（双指接管缩放时调用，避免捏合误涂）。 */
+    fun cancelStroke() {
+        if (!strokeActive) return
+        if (editHistory.isNotEmpty()) {
+            val snapshot = editHistory.removeAt(editHistory.lastIndex)
+            gridData?.let { g ->
+                g.cells = snapshot
+                gridVersion++
+                recomputeStats()
+            }
+        }
+        strokeActive = false
+        strokeChanged = false
+    }
+
     fun floodErase(row: Int, col: Int) {
         val g = gridData ?: return
         if (!isEditable(g, row, col)) return
