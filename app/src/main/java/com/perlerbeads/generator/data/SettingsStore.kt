@@ -3,6 +3,7 @@ package com.perlerbeads.generator.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.perlerbeads.generator.model.ColorSystem
+import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.PixelationMode
 import org.json.JSONObject
 
@@ -25,6 +26,13 @@ class SettingsStore(context: Context) {
             else -> PixelationMode.DOMINANT
         }
         set(v) { prefs.edit().putString(KEY_MODE, v.name).apply() }
+
+    var gridShape: GridShape
+        get() = when (prefs.getString(KEY_SHAPE, "SQUARE")) {
+            "CIRCLE" -> GridShape.CIRCLE
+            else -> GridShape.SQUARE
+        }
+        set(v) { prefs.edit().putString(KEY_SHAPE, v.name).apply() }
 
     /** AI 服务地址（网页版 /api/ai-optimize 的完整 URL），空 = 未配置。 */
     var aiServiceUrl: String
@@ -64,6 +72,7 @@ class SettingsStore(context: Context) {
         private const val KEY_COLOR_SYSTEM = "color_system"
         private const val KEY_GRANULARITY = "granularity"
         private const val KEY_MODE = "pixelation_mode"
+        private const val KEY_SHAPE = "grid_shape"
         private const val KEY_PALETTE = "palette_selections"
         private const val KEY_AI_URL = "ai_service_url"
         private const val KEY_AI_REQKEY = "ai_req_key"

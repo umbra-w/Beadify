@@ -1,5 +1,7 @@
 package com.perlerbeads.generator.model
 
+import kotlin.math.min
+
 /** 拼豆色号系统（店家）。 */
 enum class ColorSystem(val key: String) {
     MARD("MARD"),
@@ -22,6 +24,11 @@ enum class ColorSystem(val key: String) {
 /** 像素化模式：卡通（主导色）/ 真实（平均色）。 */
 enum class PixelationMode {
     DOMINANT, AVERAGE
+}
+
+/** 画板形状。 */
+enum class GridShape {
+    SQUARE, CIRCLE
 }
 
 data class RgbColor(val r: Int, val g: Int, val b: Int)
@@ -54,8 +61,15 @@ class GridData(
     val m: Int,
     var cells: Array<Array<MappedPixel>>,
     /** 初始网格 hex 集合，供颜色排除重映射使用。 */
-    val initialColorKeys: Set<String>
+    val initialColorKeys: Set<String>,
+    /** 画板形状。 */
+    val shape: GridShape = GridShape.SQUARE
 ) {
     fun deepCopyCells(): Array<Array<MappedPixel>> =
         Array(m) { r -> Array(n) { c -> cells[r][c] } }
+
+    /** 圆形模式下计算中心与半径。 */
+    val circleCenterX: Float get() = n / 2f
+    val circleCenterY: Float get() = m / 2f
+    val circleRadius: Float get() = min(circleCenterX, circleCenterY) - 0.5f
 }

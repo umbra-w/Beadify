@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.PixelationMode
 import com.perlerbeads.generator.model.ColorSystem
 import com.perlerbeads.generator.navigation.Screen
@@ -84,6 +85,27 @@ fun SettingsScreen(vm: AppViewModel) {
                     selected = mode == PixelationMode.AVERAGE,
                     onClick = { mode = PixelationMode.AVERAGE },
                     label = { Text("真实（平均）") }
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 画板形状
+            Text("画板形状", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = vm.settings.gridShape == GridShape.SQUARE,
+                    onClick = { vm.settings.gridShape = GridShape.SQUARE },
+                    label = { Text("方形") }
+                )
+                FilterChip(
+                    selected = vm.settings.gridShape == GridShape.CIRCLE,
+                    onClick = { vm.settings.gridShape = GridShape.CIRCLE },
+                    label = { Text("圆形") }
                 )
             }
 

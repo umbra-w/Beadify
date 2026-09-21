@@ -24,6 +24,7 @@ import com.perlerbeads.generator.algorithm.replaceColor
 import com.perlerbeads.generator.data.PaletteRepository
 import com.perlerbeads.generator.data.SettingsStore
 import com.perlerbeads.generator.model.ColorSystem
+import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.GridData
 import com.perlerbeads.generator.model.MappedPixel
 import com.perlerbeads.generator.model.PaletteColor
@@ -39,6 +40,8 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /** 应用级共享状态与编辑操作。 */
 private const val DEFAULT_AI_PROMPT =
@@ -82,6 +85,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var toast by mutableStateOf<String?>(null)
         private set
+
+    // ---------- 编辑历史（撤回/重做） ----------
+
+    private val editHistory = mutableListOf<Array<Array<MappedPixel>>>()
+    private var redoStack = mutableListOf<Array<Array<MappedPixel>>>()
+
+    /** 是否有操作可撤回。 */
+    val canUndo: Boolean get() = editHistory.isNotEmpty()
+
+    /** 是否有操作可重做。 */
+    val canRedo: Boolean get() = redoStack.isNotEmpty()
+
+    /** 保存当前网格快照到历史栈（上限 50 步）。 */
+    private fun saveSnapshot() {
+        val g = gridData ?: return
+        if (editHistory.size >= 50) editHistory.removeAt(0)
+        editHistory.add(g.deepCopyCells())
+        redoStack.clear() // 新操作清空重做栈
+    }
+
+    /** 撤回一步。 */
+    fun undo() {
+        val g = gridData ?: return
+        if (editHistory.isEmpty()) return
+        redoStack.add(g.deepCopyCells())
+        g.cells = editHistory.removeAt(editHistory.lastIndex)
+        gridVersion++
+        recomputeStats()
+        toast = "已撤回"
+    }
+
+    /** 重做一步。 */
+    fun redo() {
+        val g = gridData ?: return
+        if (redoStack.isEmpty()) return
+        editHistory.add(g.deepCopyCells())
+        g.cells = redoStack.removeAt(redoStack.lastIndex)
+        gridVersion++
+        recomputeStats()
+        toast = "已重做"
+    }
+
+    /** 清空编辑历史（换图/调参时调用）。 */
+    fun clearEditHistory() {
+        editHistory.clear()
+        redoStack.clear()
+    }
 
     init {
         refreshActivePalette()
@@ -170,9 +220,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
-                GridData(n, m, initial, initialKeys)
+                val shape = settings.gridShape
+                // 圆形遮罩：圆外格标记为外部
+                if (shape == GridShape.CIRCLE) {
+                    val cx = n / 2f
+                    val cy = m / 2f
+                    val r = min(cx, cy) - 0.5f
+                    for (row in 0 until m) {
+                        for (col in 0 until n) {
+                            val dist = sqrt(
+                                ((col - cx) * (col - cx) + (row - cy) * (row - cy)).toDouble()
+                            )
+                            if (dist > r) {
+                                initial[row][col] = transparentColorData
+                            }
+                        }
+                    }
+                }
+                GridData(n, m, initial, initialKeys, shape)
             }
             gridData = result
+            clearEditHistory()
             recomputeStats()
             selectedPaintColor = gridPalette.firstOrNull()
             processing = false
@@ -190,6 +258,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun paintCell(row: Int, col: Int, color: PaletteColor?) {
         val g = gridData ?: return
         val c = color ?: selectedPaintColor ?: return
+        saveSnapshot()
         val res = paintSinglePixel(g.cells, row, col, MappedPixel(c.key, c.hex, false))
         if (res.hasChange) {
             g.cells = res.grid
@@ -202,6 +271,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val g = gridData ?: return
         val cell = g.cells.getOrNull(row)?.getOrNull(col) ?: return
         if (cell.isExternal) return
+        saveSnapshot()
         val res = paintSinglePixel(g.cells, row, col, transparentColorData)
         if (res.hasChange) {
             g.cells = res.grid
@@ -214,6 +284,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val g = gridData ?: return
         val cell = g.cells.getOrNull(row)?.getOrNull(col) ?: return
         if (cell.isExternal) return
+        saveSnapshot()
         g.cells = floodFillErase(g.cells, row, col, cell.key)
         gridVersion++
         recomputeStats()
@@ -223,6 +294,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val g = gridData ?: return
         val src = selectedPaintColor ?: return
         val t = target ?: return
+        saveSnapshot()
         val res = replaceColor(
             g.cells,
             MappedPixel(src.key, src.hex, false),
@@ -240,6 +312,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun autoRemoveBackground() {
         val g = gridData ?: return
+        saveSnapshot()
         val res = autoRemoveBackground(g.cells)
         if (res.removedCount > 0) {
             g.cells = res.grid

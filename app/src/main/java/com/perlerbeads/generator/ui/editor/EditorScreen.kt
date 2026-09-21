@@ -33,10 +33,13 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Highlight
+import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -207,6 +210,24 @@ fun EditorScreen(vm: AppViewModel) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("去背景")
+                }
+                // 撤回
+                TextButton(
+                    onClick = { vm.undo() },
+                    enabled = vm.canUndo
+                ) {
+                    Icon(Icons.Filled.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("撤回")
+                }
+                // 重做
+                TextButton(
+                    onClick = { vm.redo() },
+                    enabled = vm.canRedo
+                ) {
+                    Icon(Icons.Filled.Redo, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("重做")
                 }
                 TextButton(
                     onClick = {
@@ -534,6 +555,9 @@ private fun ExportDialog(
     onStats: () -> Unit,
     onList: () -> Unit
 ) {
+    var hideWhite by remember { mutableStateOf(true) }
+    var mirror by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("导出") },
@@ -544,6 +568,15 @@ private fun ExportDialog(
                 FilterChip(selected = false, onClick = onStats, label = { Text("颜色统计图 PNG") })
                 Spacer(Modifier.height(8.dp))
                 FilterChip(selected = false, onClick = onList, label = { Text("采购清单 CSV") })
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = hideWhite, onCheckedChange = { hideWhite = it })
+                    Text("隐藏白色格子色号", style = MaterialTheme.typography.bodySmall)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = mirror, onCheckedChange = { mirror = it })
+                    Text("水平镜像图纸", style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
