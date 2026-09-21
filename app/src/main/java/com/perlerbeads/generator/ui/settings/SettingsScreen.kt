@@ -118,7 +118,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 Spacer(Modifier.height(12.dp))
                 Text("圆形画板覆盖范围", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "生成图纸后可在图纸页双指缩放/拖动继续微调圆板位置",
+                    "生成图纸后可双指缩放/拖动取位，拖动圆环边缘调整圆板大小",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
