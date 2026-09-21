@@ -45,6 +45,8 @@ fun findClosestPaletteColor(target: RgbColor, palette: List<PaletteColor>): Pale
  * 根据 Bitmap、网格尺寸、色板与模式计算像素网格。
  * 对应 pixelation.ts L162（calculatePixelGrid）。
  * 内部先 getPixels 读一次全图，再按窗口遍历，等价于网页版 getImageData。
+ *
+ * @param dithering 开启 Floyd-Steinberg 误差扩散抖动（照片类图片过渡更自然）
  */
 fun calculatePixelGrid(
     bitmap: Bitmap,
@@ -52,9 +54,10 @@ fun calculatePixelGrid(
     m: Int,
     palette: List<PaletteColor>,
     mode: PixelationMode,
-    fallback: PaletteColor
+    fallback: PaletteColor,
+    dithering: Boolean = false
 ): Array<Array<MappedPixel>> {
-    val mapped = Array(m) { Array(n) { MappedPixel(fallback.key, fallback.hex, false) } }
+    val reps = Array(m) { arrayOfNulls<RgbColor>(n) }
     val imgWidth = bitmap.width
     val imgHeight = bitmap.height
     val fullImage = IntArray(imgWidth * imgHeight)
@@ -72,16 +75,73 @@ fun calculatePixelGrid(
             val cw = Math.max(1, endX - startX)
             val ch = Math.max(1, endY - startY)
 
-            val rep = calculateCellRepresentativeColor(fullImage, imgWidth, startX, startY, cw, ch, mode)
-            mapped[j][i] = if (rep != null) {
-                val closest = findClosestPaletteColor(rep, palette)
-                MappedPixel(closest.key, closest.hex, false)
-            } else {
-                transparentColorData
+            reps[j][i] = calculateCellRepresentativeColor(fullImage, imgWidth, startX, startY, cw, ch, mode)
+        }
+    }
+    return if (dithering) {
+        quantizeWithDithering(reps, palette, fallback)
+    } else {
+        Array(m) { j ->
+            Array(n) { i ->
+                reps[j][i]?.let { rep ->
+                    val closest = findClosestPaletteColor(rep, palette)
+                    MappedPixel(closest.key, closest.hex, false)
+                } ?: transparentColorData
             }
         }
     }
-    return mapped
+}
+
+/**
+ * Floyd-Steinberg 误差扩散量化（纯函数，无 Android 依赖，便于单测）。
+ * 逐格取「代表色 + 累积误差」的最近色板色，把量化误差按经典权重扩散：
+ * 右 7/16、下左 3/16、下 5/16、下右 1/16。透明格（rep=null）不产生误差。
+ * 输出确定性（无随机数），同输入必同输出。
+ */
+fun quantizeWithDithering(
+    reps: Array<Array<RgbColor?>>,
+    palette: List<PaletteColor>,
+    fallback: PaletteColor
+): Array<Array<MappedPixel>> {
+    val m = reps.size
+    val n = if (m > 0) reps[0].size else 0
+    val out = Array(m) { Array(n) { MappedPixel(fallback.key, fallback.hex, false) } }
+    val errR = Array(m) { FloatArray(n) }
+    val errG = Array(m) { FloatArray(n) }
+    val errB = Array(m) { FloatArray(n) }
+
+    fun push(j: Int, i: Int, er: Float, eg: Float, eb: Float, weight: Float) {
+        if (j < 0 || j >= m || i < 0 || i >= n) return
+        errR[j][i] += er * weight
+        errG[j][i] += eg * weight
+        errB[j][i] += eb * weight
+    }
+
+    for (j in 0 until m) {
+        for (i in 0 until n) {
+            val rep = reps[j][i]
+            if (rep == null) {
+                out[j][i] = transparentColorData
+                continue
+            }
+            // 目标色 = 代表色 + 累积误差（钳制到有效范围）
+            val tr = (rep.r + errR[j][i]).toInt().coerceIn(0, 255)
+            val tg = (rep.g + errG[j][i]).toInt().coerceIn(0, 255)
+            val tb = (rep.b + errB[j][i]).toInt().coerceIn(0, 255)
+            val chosen = findClosestPaletteColor(RgbColor(tr, tg, tb), palette)
+            out[j][i] = MappedPixel(chosen.key, chosen.hex, false)
+
+            // 新误差 = 目标色 - 实际选中的色板色
+            val er = (rep.r + errR[j][i]) - chosen.rgb.r
+            val eg = (rep.g + errG[j][i]) - chosen.rgb.g
+            val eb = (rep.b + errB[j][i]) - chosen.rgb.b
+            push(j, i + 1, er, eg, eb, 7f / 16f)
+            push(j + 1, i - 1, er, eg, eb, 3f / 16f)
+            push(j + 1, i, er, eg, eb, 5f / 16f)
+            push(j + 1, i + 1, er, eg, eb, 1f / 16f)
+        }
+    }
+    return out
 }
 
 /** 计算单元代表色。对应 pixelation.ts L89（calculateCellRepresentativeColor）。 */

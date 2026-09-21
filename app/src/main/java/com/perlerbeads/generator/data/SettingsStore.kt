@@ -34,6 +34,11 @@ class SettingsStore(context: Context) {
         }
         set(v) { prefs.edit().putString(KEY_SHAPE, v.name).apply() }
 
+    /** Floyd-Steinberg 抖动过渡（照片类图片在有限色板下过渡更自然）。 */
+    var dithering: Boolean
+        get() = prefs.getBoolean(KEY_DITHERING, false)
+        set(v) { prefs.edit().putBoolean(KEY_DITHERING, v).apply() }
+
     /** 圆形模式下，圆心偏移（0..1）。0.5=居中。 */
     var circleOffsetX: Float
         get() = prefs.getFloat(KEY_CIRCLE_X, 0.5f)
@@ -100,6 +105,7 @@ class SettingsStore(context: Context) {
         private const val KEY_GRANULARITY = "granularity"
         private const val KEY_MODE = "pixelation_mode"
         private const val KEY_SHAPE = "grid_shape"
+        private const val KEY_DITHERING = "dithering"
         private const val KEY_CIRCLE_X = "circle_offset_x"
         private const val KEY_CIRCLE_Y = "circle_offset_y"
         private const val KEY_PALETTE = "palette_selections"

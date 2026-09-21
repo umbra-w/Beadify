@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -45,6 +46,7 @@ fun SettingsScreen(vm: AppViewModel) {
     var granularity by remember { mutableFloatStateOf(vm.settings.granularity.toFloat()) }
     var mode by remember { mutableStateOf(vm.settings.mode) }
     var gridShape by remember { mutableStateOf(vm.settings.gridShape) }
+    var dithering by remember { mutableStateOf(vm.settings.dithering) }
     var circleOffsetX by remember { mutableFloatStateOf(vm.settings.circleOffsetX) }
     var circleOffsetY by remember { mutableFloatStateOf(vm.settings.circleOffsetY) }
 
@@ -89,6 +91,21 @@ fun SettingsScreen(vm: AppViewModel) {
                     onClick = { mode = PixelationMode.AVERAGE },
                     label = { Text("真实（平均）") }
                 )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 抖动过渡
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("抖动过渡", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "误差扩散抖动，照片类图片色彩过渡更自然",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = dithering, onCheckedChange = { dithering = it })
             }
 
             Spacer(Modifier.height(16.dp))
@@ -185,6 +202,7 @@ fun SettingsScreen(vm: AppViewModel) {
                         vm.settings.granularity = granularity.toInt()
                         vm.settings.mode = mode
                         vm.settings.gridShape = gridShape
+                        vm.settings.dithering = dithering
                         vm.settings.circleOffsetX = circleOffsetX
                         vm.settings.circleOffsetY = circleOffsetY
                         vm.generate()

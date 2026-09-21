@@ -219,9 +219,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val n = settings.granularity
                 val aspect = bmp.height.toDouble() / bmp.width.toDouble()
                 val m = Math.max(1, Math.round(n * aspect).toInt())
-                // calculatePixelGrid 内部完成 下采样 + RGB距离映射
+                // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动）
                 val initial = calculatePixelGrid(
-                    bmp, n, m, palette, settings.mode, t1
+                    bmp, n, m, palette, settings.mode, t1, settings.dithering
                 )
 
                 val initialKeys = HashSet<String>()
