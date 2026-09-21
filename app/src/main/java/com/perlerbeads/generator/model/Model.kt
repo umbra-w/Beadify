@@ -96,3 +96,34 @@ fun circleGeometry(n: Int, m: Int, offsetX: Float, offsetY: Float): CircleGeomet
     val cy = outCells / 2f + offsetY.coerceIn(0f, 1f) * (m - outCells)
     return CircleGeometry(cx, cy, outCells / 2f)
 }
+
+/**
+ * 由编辑器「固定圆框 + 图案变换」推导网格坐标系下的圆形几何。
+ *
+ * 编辑页圆形模式下：圆框固定在屏幕上（中心 F、半径 R 像素），图案以
+ * cellPx（zoom=1 时每格像素）* zoom 的比例在框后缩放平移。图案原点
+ * O = F - anchor中心*cs + offset（anchor 即初始圆心，始终锚定框中心缩放），
+ * 由此框内图案的圆在网格坐标下为：
+ *   中心 = anchor中心 - offset/cs，半径 = R/cs
+ *
+ * @param anchor 初始圆形几何（zoom=1、offset=0 时与框重合）
+ * @param zoom 图案缩放（1 = 圆区域恰好填满框）
+ * @param offset 图案平移（像素）
+ * @param frameRadiusPx 圆框半径（屏幕像素）
+ * @param baseCellPx zoom=1 时每格像素 = 2*frameRadiusPx / min(n,m)
+ */
+fun derivedCircleGeometry(
+    anchor: CircleGeometry,
+    zoom: Float,
+    offsetX: Float,
+    offsetY: Float,
+    frameRadiusPx: Float,
+    baseCellPx: Float
+): CircleGeometry {
+    val cs = baseCellPx * zoom
+    return CircleGeometry(
+        anchor.centerX - offsetX / cs,
+        anchor.centerY - offsetY / cs,
+        frameRadiusPx / cs
+    )
+}

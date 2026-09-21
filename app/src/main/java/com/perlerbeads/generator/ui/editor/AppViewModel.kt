@@ -24,6 +24,7 @@ import com.perlerbeads.generator.algorithm.replaceColor
 import com.perlerbeads.generator.data.PaletteRepository
 import com.perlerbeads.generator.data.SettingsStore
 import com.perlerbeads.generator.model.ColorSystem
+import com.perlerbeads.generator.model.CircleGeometry
 import com.perlerbeads.generator.model.GridData
 import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.MappedPixel
@@ -74,6 +75,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     var stats by mutableStateOf<ColorStats?>(null)
+        private set
+
+    /**
+     * 圆形画板几何（网格坐标系，单位=格）：圆框圈住的格子 = 最终产品。
+     * 生成时由设置里的覆盖范围滑块初始化，编辑页双指缩放/平移会实时更新它，
+     * 统计、可编辑区域、导出全部以此为准。方形画板为 null。
+     */
+    var circleFrame by mutableStateOf<CircleGeometry?>(null)
         private set
 
     var processing by mutableStateOf(false)
@@ -169,6 +178,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         bitmap = bmp
         gridData = null
         stats = null
+        circleFrame = null
         screen = Screen.Crop
     }
 
@@ -176,6 +186,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         bitmap = bmp
         gridData = null
         stats = null
+        circleFrame = null
         screen = Screen.Settings
     }
 
@@ -222,6 +233,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 GridData(n, m, initial, initialKeys, settings.gridShape)
             }
             gridData = result
+            // 圆形画板：用设置的覆盖范围滑块初始化圆框；编辑页手势会实时更新它
+            circleFrame = if (settings.gridShape == GridShape.CIRCLE) {
+                circleGeometry(result.n, result.m, settings.circleOffsetX, settings.circleOffsetY)
+            } else {
+                null
+            }
             clearEditHistory()
             recomputeStats()
             selectedPaintColor = gridPalette.firstOrNull()
@@ -235,19 +252,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         stats = recalculateColorStats(g.cells, circleFilter(g))
     }
 
-    /** 圆形画板：只统计/编辑圆内格子；方形返回 null（不过滤）。 */
+    /** 圆形画板：只统计/编辑圆框内格子；方形返回 null（不过滤）。 */
     private fun circleFilter(g: GridData): ((Int, Int) -> Boolean)? {
-        if (g.shape != GridShape.CIRCLE) return null
-        val geo = circleGeometry(g.n, g.m, settings.circleOffsetX, settings.circleOffsetY)
+        val geo = effectiveCircleFrame(g) ?: return null
         return { row, col -> geo.contains(row, col) }
     }
 
-    /** 该格子是否可编辑（越界或圆形画板圆外不可编辑）。 */
+    /** 当前生效的圆框：编辑页手势更新过的优先，否则用设置的覆盖范围滑块推导。 */
+    private fun effectiveCircleFrame(g: GridData): CircleGeometry? {
+        if (g.shape != GridShape.CIRCLE) return null
+        return circleFrame ?: circleGeometry(g.n, g.m, settings.circleOffsetX, settings.circleOffsetY)
+    }
+
+    /** 该格子是否可编辑（越界或圆形画板圆框外不可编辑）。 */
     private fun isEditable(g: GridData, row: Int, col: Int): Boolean {
         if (row !in 0 until g.m || col !in 0 until g.n) return false
-        if (g.shape != GridShape.CIRCLE) return true
-        val geo = circleGeometry(g.n, g.m, settings.circleOffsetX, settings.circleOffsetY)
+        val geo = effectiveCircleFrame(g) ?: return true
         return geo.contains(row, col)
+    }
+
+    /** 编辑页双指调整圆框取位后调用：更新几何并重算统计。 */
+    fun updateCircleFrame(geo: CircleGeometry) {
+        val g = gridData ?: return
+        if (g.shape != GridShape.CIRCLE) return
+        circleFrame = geo
+        recomputeStats()
     }
 
     // ---------- 编辑 ----------

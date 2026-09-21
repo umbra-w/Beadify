@@ -117,6 +117,11 @@ fun SettingsScreen(vm: AppViewModel) {
             if (gridShape == GridShape.CIRCLE) {
                 Spacer(Modifier.height(12.dp))
                 Text("圆形画板覆盖范围", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "生成图纸后可在图纸页双指缩放/拖动继续微调圆板位置",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 val imgAspect = vm.bitmap?.let { it.height.toFloat() / it.width.toFloat() } ?: 1f
                 if (imgAspect > 1.05f) {
                     Text(

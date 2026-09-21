@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,6 +78,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -85,17 +88,27 @@ import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.PaletteColor
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
 import com.perlerbeads.generator.model.circleGeometry
+import com.perlerbeads.generator.model.derivedCircleGeometry
 import com.perlerbeads.generator.navigation.Screen
 import com.perlerbeads.generator.ui.components.GridRenderer
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.min
 
 enum class EditorTool { BRUSH, ERASER, FLOOD, REPLACE }
 
 /** 手势诊断日志标签（定位双指缩放问题用，问题关闭后移除）。 */
 private const val TAG = "PerlerGesture"
+
+/** 手势诊断：logcat + 应用私有文件（logcat 缓冲会被 MIUI 系统日志轮转冲掉）。 */
+private fun gestureLog(context: android.content.Context?, msg: String) {
+    Log.d(TAG, msg)
+    if (context != null) runCatching {
+        java.io.File(context.filesDir, "gesture.log").appendText("${System.currentTimeMillis()} $msg\n")
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +125,11 @@ fun EditorScreen(vm: AppViewModel) {
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     // hex → Compose Color 缓存（普通 HashMap，绘制期写入安全）
     val colorCache = remember(grid) { HashMap<String, Color>() }
+    // 初始圆框（圆形画板）：zoom=1、offset=0 时图案的圆区域恰好填满屏幕上的固定圆框
+    val anchor = remember(grid) {
+        vm.circleFrame
+            ?: circleGeometry(grid.n, grid.m, vm.settings.circleOffsetX, vm.settings.circleOffsetY)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -121,7 +139,11 @@ fun EditorScreen(vm: AppViewModel) {
                     TextButton(onClick = { vm.navigate(Screen.Settings) }) { Text("返回") }
                 },
                 actions = {
-                    IconButton(onClick = { zoom = 1f; offset = Offset.Zero }) {
+                    IconButton(onClick = {
+                        zoom = 1f
+                        offset = Offset.Zero
+                        if (grid.shape == GridShape.CIRCLE) vm.updateCircleFrame(anchor)
+                    }) {
                         Icon(Icons.Filled.CenterFocusStrong, contentDescription = "复位视图")
                     }
                     IconButton(onClick = { showStats = !showStats }) {
@@ -144,26 +166,97 @@ fun EditorScreen(vm: AppViewModel) {
                 if (containerSize != IntSize.Zero) {
                     val cw = containerSize.width.toFloat()
                     val ch = containerSize.height.toFloat()
-                    // zoom=1 时整个网格恰好适配容器
-                    val baseCell = min(cw / grid.n, ch / grid.m)
-                    val circle = if (grid.shape == GridShape.CIRCLE) {
-                        circleGeometry(grid.n, grid.m, vm.settings.circleOffsetX, vm.settings.circleOffsetY)
-                    } else null
+                    val isCircle = grid.shape == GridShape.CIRCLE
+                    // 圆形模式：圆框固定在屏幕上（框/遮罩/环 = 固定层），图案在框后缩放平移（内容层）
+                    val frameRadius = if (isCircle) {
+                        min(cw, ch) / 2f - with(LocalDensity.current) { 12.dp.toPx() }
+                    } else 0f
+                    val frameCx = cw / 2f
+                    val frameCy = ch / 2f
+                    // zoom=1 时每格像素：圆区域（min(n,m) 格）恰好等于圆框直径
+                    val baseCell = if (isCircle) {
+                        2f * frameRadius / min(grid.n, grid.m)
+                    } else {
+                        min(cw / grid.n, ch / grid.m)
+                    }
+                    // 缩放范围：最小让整个网格都能进圆框，最大 8 倍
+                    val zoomMin = if (isCircle) {
+                        (min(grid.n, grid.m) / (1.7f * max(grid.n, grid.m))).coerceIn(0.2f, 1f)
+                    } else 0.5f
+                    val zoomMax = 8f
+
+                    /** 图案原点（格子 0,0 的屏幕位置）。圆形模式锚定初始圆心，方形模式居中。 */
+                    fun patternOrigin(cell: Float): Offset =
+                        if (isCircle) {
+                            Offset(
+                                frameCx - anchor.centerX * cell + offset.x,
+                                frameCy - anchor.centerY * cell + offset.y
+                            )
+                        } else {
+                            Offset((cw - grid.n * cell) / 2f + offset.x, (ch - grid.m * cell) / 2f + offset.y)
+                        }
 
                     fun cellAt(pos: Offset): Pair<Int, Int>? {
                         val cell = baseCell * zoom
                         if (cell <= 0f) return null
-                        val ox = (cw - grid.n * cell) / 2f + offset.x
-                        val oy = (ch - grid.m * cell) / 2f + offset.y
-                        val col = floor((pos.x - ox) / cell).toInt()
-                        val row = floor((pos.y - oy) / cell).toInt()
+                        val o = patternOrigin(cell)
+                        val col = floor((pos.x - o.x) / cell).toInt()
+                        val row = floor((pos.y - o.y) / cell).toInt()
                         return if (col in 0 until grid.n && row in 0 until grid.m) row to col else null
+                    }
+
+                    fun clampOffset(candidate: Offset): Offset {
+                        return if (!isCircle) {
+                            clampEditorOffset(candidate, cw, ch, grid.n * baseCell * zoom, grid.m * baseCell * zoom)
+                        } else {
+                            // 圆框至少与图案相交 0.7 半径，防止图案被完全拖出框
+                            val cs = baseCell * zoom
+                            val r = frameRadius / cs
+                            Offset(
+                                candidate.x.coerceIn(
+                                    (anchor.centerX - (grid.n + 0.7f * r)) * cs,
+                                    (anchor.centerX + 0.7f * r) * cs
+                                ),
+                                candidate.y.coerceIn(
+                                    (anchor.centerY - (grid.m + 0.7f * r)) * cs,
+                                    (anchor.centerY + 0.7f * r) * cs
+                                )
+                            )
+                        }
+                    }
+
+                    /** 把当前变换对应的圆框几何写回 ViewModel（统计/编辑/导出随之更新）。 */
+                    fun pushCircleFrame() {
+                        if (!isCircle) return
+                        val clamped = clampOffset(offset)
+                        vm.updateCircleFrame(
+                            derivedCircleGeometry(anchor, zoom, clamped.x, clamped.y, frameRadius, baseCell)
+                        )
+                    }
+
+                    // 兜底缩放路径：transformable 在同节点上（旧编辑页已验证可用的配方）。
+                    // 主手势处理器在 Main pass 优先消费事件；只有主处理器未消费时它才会接管，
+                    // 用于在主处理器双指路径失效的设备上保底缩放。
+                    val fallbackState = rememberTransformableState { zoomChange, panChange, _ ->
+                        gestureLog(context, "editor FALLBACK transformable zoom=$zoomChange pan=$panChange")
+                        if (zoomChange.isFinite() && zoomChange > 0f) {
+                            zoom = (zoom * zoomChange).coerceIn(zoomMin, zoomMax)
+                        }
+                        if (panChange.x.isFinite() && panChange.y.isFinite()) {
+                            offset = clampOffset(offset + panChange)
+                        }
+                        pushCircleFrame()
                     }
 
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
+                            .transformable(fallbackState)
                             .pointerInput(grid, containerSize) {
+                                runCatching {
+                                    java.io.File(context.filesDir, "gesture.log").writeText("")
+                                }
+                                gestureLog(context, "editor handler started")
                                 // 统一手势：单指=工具（单击/拖动连涂/长按洪水擦除），双指=缩放平移
                                 val slopPx = viewConfiguration.touchSlop
                                 val longPressTimeout = viewConfiguration.longPressTimeoutMillis
@@ -171,6 +264,7 @@ fun EditorScreen(vm: AppViewModel) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val downCell = cellAt(down.position)
+                                    gestureLog(context, "editor down pos=${down.position} cell=$downCell")
                                     var mode = 0            // 0 待定 1 工具 2 缩放平移
                                     var painting = false    // 笔画进行中
                                     var longFired = false
@@ -185,13 +279,11 @@ fun EditorScreen(vm: AppViewModel) {
                                         val pressed = event.changes.filter { it.pressed }
                                         if (pressed.isEmpty()) break
 
-                                        if (pressed.size != lastReportedCount) {
-                                            Log.d(
-                                                TAG, "editor pointers=${pressed.size} " +
-                                                    "zoomChange=${event.calculateZoom()} mode=$mode"
-                                            )
-                                            lastReportedCount = pressed.size
-                                        }
+                                        gestureLog(
+                                            context,
+                                            "editor evt n=${pressed.size} " +
+                                                event.changes.joinToString { c -> "${c.id}:${if (c.pressed) "P" else "u"}@${c.position}" }
+                                        )
 
                                         if (pressed.size >= 2) {
                                             // 双指：回滚误涂笔画（捏合不应落笔），进入缩放平移
@@ -200,14 +292,11 @@ fun EditorScreen(vm: AppViewModel) {
                                             val zoomChange = event.calculateZoom()
                                             val panChange = event.calculatePan()
                                             if (zoomChange.isFinite() && zoomChange > 0f) {
-                                                zoom = (zoom * zoomChange).coerceIn(0.5f, 12f)
-                                                Log.d(TAG, "editor zoom -> $zoom")
+                                                zoom = (zoom * zoomChange).coerceIn(zoomMin, zoomMax)
+                                                gestureLog(context, "editor zoom -> $zoom")
                                             }
                                             if (panChange.x.isFinite() && panChange.y.isFinite()) {
-                                                offset = clampEditorOffset(
-                                                    offset + panChange, cw, ch,
-                                                    grid.n * baseCell * zoom, grid.m * baseCell * zoom
-                                                )
+                                                offset = clampOffset(offset + panChange)
                                             }
                                             event.changes.forEach { if (it.positionChanged()) it.consume() }
                                             last = pressed[0].position
@@ -222,10 +311,7 @@ fun EditorScreen(vm: AppViewModel) {
                                             if (change.id != lastPointerId) {
                                                 lastPointerId = change.id
                                             } else {
-                                                offset = clampEditorOffset(
-                                                    offset + (change.position - last), cw, ch,
-                                                    grid.n * baseCell * zoom, grid.m * baseCell * zoom
-                                                )
+                                                offset = clampOffset(offset + (change.position - last))
                                             }
                                             last = change.position
                                             if (change.positionChanged()) change.consume()
@@ -276,6 +362,9 @@ fun EditorScreen(vm: AppViewModel) {
                                     // 手势结束
                                     if (painting) {
                                         vm.endStroke()
+                                    } else if (mode == 2) {
+                                        // 缩放/平移结束：把最终圆框写回（统计与导出随之更新）
+                                        pushCircleFrame()
                                     } else if (!pastSlop && !longFired && mode != 2) {
                                         // 单击
                                         downCell?.let { (row, col) ->
@@ -296,8 +385,9 @@ fun EditorScreen(vm: AppViewModel) {
                         val cells = grid.cells
 
                         val cell = baseCell * zoom
-                        val ox = (cw - grid.n * cell) / 2f + offset.x
-                        val oy = (ch - grid.m * cell) / 2f + offset.y
+                        val o = patternOrigin(cell)
+                        val ox = o.x
+                        val oy = o.y
 
                         // 只绘制可视范围内的格子
                         val colStart = maxOf(0, floor(-ox / cell).toInt())
@@ -339,18 +429,26 @@ fun EditorScreen(vm: AppViewModel) {
                             }
                         }
 
-                        // 圆形遮罩层：圆外压暗 + 白色圆环（屏幕空间恒定线宽，与内容分层）
-                        if (circle != null) {
-                            val ccx = ox + circle.centerX * cell
-                            val ccy = oy + circle.centerY * cell
-                            val rr = circle.radius * cell
+                        // 圆形遮罩层（固定层）：圆框外压暗 + 白色圆环，屏幕坐标固定，
+                        // 图案在框后缩放平移 —— 框即圆板，框内 = 最终产品
+                        if (isCircle) {
                             val dim = Path().apply {
                                 addRect(Rect(0f, 0f, size.width, size.height))
-                                addOval(Rect(ccx - rr, ccy - rr, ccx + rr, ccy + rr))
+                                addOval(
+                                    Rect(
+                                        frameCx - frameRadius, frameCy - frameRadius,
+                                        frameCx + frameRadius, frameCy + frameRadius
+                                    )
+                                )
                                 fillType = PathFillType.EvenOdd
                             }
                             drawPath(dim, Color.Black.copy(alpha = 0.62f))
-                            drawCircle(Color.White, radius = rr, center = Offset(ccx, ccy), style = Stroke(2.5f))
+                            drawCircle(
+                                Color.White,
+                                radius = frameRadius,
+                                center = Offset(frameCx, frameCy),
+                                style = Stroke(2.5f)
+                            )
                         }
                     }
                 }
@@ -514,10 +612,14 @@ fun EditorScreen(vm: AppViewModel) {
             onPattern = { hideWhite, mirror ->
                 showExport = false
                 val bmp = runCatching {
-                    val cell = maxOf(4, minOf(48, 4096 / maxOf(grid.n, grid.m)))
+                    // 圆形画板按圆框直径限制导出尺寸，保证大圆框不超内存上限
+                    val gridCell = 4096 / maxOf(grid.n, grid.m)
+                    val circleCell = vm.circleFrame?.let { (4096f / (2f * it.radius)).toInt() } ?: Int.MAX_VALUE
+                    val cell = maxOf(4, minOf(48, minOf(gridCell, circleCell)))
                     GridRenderer.render(
                         grid, cell, showBorders = true, showKeys = true,
-                        hideWhiteKeys = hideWhite, mirror = mirror
+                        hideWhiteKeys = hideWhite, mirror = mirror,
+                        circle = vm.circleFrame
                     )
                 }.getOrNull()
                 if (bmp != null) {

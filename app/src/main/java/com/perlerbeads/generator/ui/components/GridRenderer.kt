@@ -9,6 +9,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import com.perlerbeads.generator.model.GridData
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
+import kotlin.math.ceil
 
 /** 把网格绘制为 Bitmap（预览与导出共用）。 */
 object GridRenderer {
@@ -32,15 +33,21 @@ object GridRenderer {
         showKeys: Boolean = false,
         hideWhiteKeys: Boolean = true,
         circleOffsetX: Float = 0.5f,
-        circleOffsetY: Float = 0.5f
+        circleOffsetY: Float = 0.5f,
+        circle: com.perlerbeads.generator.model.CircleGeometry? = null
     ): Bitmap {
         val maxEdge = maxOf(grid.n, grid.m)
         val cellSize = maxOf(2, minOf(32, maxDim / maxEdge))
-        return render(grid, cellSize, showBorders, showKeys, hideWhiteKeys, circleOffsetX, circleOffsetY)
+        return render(
+            grid, cellSize, showBorders, showKeys, hideWhiteKeys,
+            circleOffsetX, circleOffsetY, mirror = false, circle = circle
+        )
     }
 
     /**
      * @param mirror 水平镜像格子位置（美纹纸背面拼贴用）。色号文字不镜像，保持可读。
+     * @param circle 圆形画板几何（网格坐标系）。null 时由 circleOffsetX/Y 推导。
+     *               编辑页双指调整后的圆框应传入此参数，保证导出所见即所得。
      */
     fun render(
         grid: GridData,
@@ -50,26 +57,40 @@ object GridRenderer {
         hideWhiteKeys: Boolean = true,
         circleOffsetX: Float = 0.5f,
         circleOffsetY: Float = 0.5f,
-        mirror: Boolean = false
+        mirror: Boolean = false,
+        circle: com.perlerbeads.generator.model.CircleGeometry? = null
     ): Bitmap {
         val gridW = grid.n * cellSize
         val gridH = grid.m * cellSize
         val isCircle = grid.shape?.name == "CIRCLE"
 
-        // 圆形模式下输出为正方形（直径 = min 边长），圆外透明
-        val outSize = if (isCircle) minOf(gridW, gridH) else maxOf(gridW, gridH)
+        // 圆形几何：优先用编辑页传递的圆框（所见即所得），否则由覆盖范围滑块推导
+        val circleGeo = if (isCircle) {
+            circle ?: com.perlerbeads.generator.model.circleGeometry(
+                grid.n, grid.m, circleOffsetX, circleOffsetY
+            )
+        } else null
+
+        // 圆形模式下输出为以圆框直径为边长的正方形，圆外透明
+        val circleR = if (isCircle) circleGeo!!.radius * cellSize else 0f
+        val circleCenterPxX = if (isCircle) {
+            // 镜像导出时圆框随图案同步镜像
+            val cx = if (mirror) grid.n - circleGeo!!.centerX else circleGeo!!.centerX
+            cx * cellSize
+        } else 0f
+        val circleCenterPxY = if (isCircle) circleGeo!!.centerY * cellSize else 0f
+        val outSize = if (isCircle) ceil(2f * circleR).toInt().coerceAtLeast(cellSize) else maxOf(gridW, gridH)
         val outW = if (isCircle) outSize else gridW
         val outH = if (isCircle) outSize else gridH
         val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
 
-        // 圆形模式：网格在画布内的偏移，使圆始终在画布中心
+        // 圆形模式：平移网格位图，使圆框中心位于输出画布中心
         val shiftX: Float
         val shiftY: Float
         if (isCircle) {
-            // circleOffset: 0=左上对齐, 0.5=居中, 1=右下对齐
-            shiftX = -(circleOffsetX * (gridW - outSize))
-            shiftY = -(circleOffsetY * (gridH - outSize))
+            shiftX = outSize / 2f - circleCenterPxX
+            shiftY = outSize / 2f - circleCenterPxY
         } else {
             shiftX = 0f; shiftY = 0f
         }
@@ -137,9 +158,8 @@ object GridRenderer {
             }
         }
 
-        // 圆形裁剪
+        // 圆形裁剪：圆框中心固定在输出画布中心
         if (isCircle && gridBmp != null) {
-            val circleR = outSize / 2f
             val circleCx = outSize / 2f
             val circleCy = outSize / 2f
             val bgPaint = Paint().apply { color = EXTERNAL_COLOR }

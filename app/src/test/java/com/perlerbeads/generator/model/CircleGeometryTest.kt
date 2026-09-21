@@ -76,4 +76,33 @@ class CircleGeometryTest {
         assertEquals(3, filtered.totalCount)
         assertEquals(3, filtered.counts["#FF0000"])
     }
+
+    @Test
+    fun derivedGeometryAtRestEqualsAnchor() {
+        val anchor = circleGeometry(4, 6, 0.5f, 0.5f)
+        // zoom=1、offset=0：框内图案的圆 = anchor 本身
+        val geo = derivedCircleGeometry(anchor, 1f, 0f, 0f, frameRadiusPx = 100f, baseCellPx = 50f)
+        assertEquals(anchor.centerX, geo.centerX, 1e-4f)
+        assertEquals(anchor.centerY, geo.centerY, 1e-4f)
+        assertEquals(2f, geo.radius, 1e-4f) // 100/50
+    }
+
+    @Test
+    fun derivedGeometryShiftsWithPatternPan() {
+        val anchor = circleGeometry(4, 4, 0.5f, 0.5f) // 中心 (2,2) 半径 2
+        // baseCell=50，zoom=1 → cs=50；offset.x=+100（图案右移 2 格）→ 框内圆心左移 2 格
+        val geo = derivedCircleGeometry(anchor, 1f, 100f, 0f, 100f, 50f)
+        assertEquals(0f, geo.centerX, 1e-4f)
+        assertEquals(2f, geo.centerY, 1e-4f)
+        assertEquals(2f, geo.radius, 1e-4f)
+    }
+
+    @Test
+    fun derivedGeometryRadiusScalesWithZoom() {
+        val anchor = circleGeometry(4, 4, 0.5f, 0.5f)
+        // zoom=2 → cs=100 → 框半径 100px = 1 格：放大图案后圆框圈住更少的格子
+        val geo = derivedCircleGeometry(anchor, 2f, 0f, 0f, 100f, 50f)
+        assertEquals(2f, geo.centerX, 1e-4f)
+        assertEquals(1f, geo.radius, 1e-4f)
+    }
 }

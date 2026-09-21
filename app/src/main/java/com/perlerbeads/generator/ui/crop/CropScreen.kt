@@ -8,6 +8,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -43,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -59,6 +62,14 @@ private const val MIN_RECT = 0.05f
 /** 手势诊断日志标签（定位双指缩放问题用，问题关闭后移除）。 */
 private const val TAG = "PerlerGesture"
 
+/** 手势诊断：logcat + 应用私有文件（logcat 缓冲会被 MIUI 系统日志轮转冲掉）。 */
+private fun gestureLog(context: android.content.Context?, msg: String) {
+    Log.d(TAG, msg)
+    if (context != null) runCatching {
+        java.io.File(context.filesDir, "gesture.log").appendText("${System.currentTimeMillis()} $msg\n")
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CropScreen(vm: AppViewModel) {
@@ -67,6 +78,7 @@ fun CropScreen(vm: AppViewModel) {
     var rect by remember(bmp) { mutableStateOf(Rect(0.05f, 0.05f, 0.95f, 0.95f)) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
+    val context = LocalContext.current
     val handleTouchPx = with(density) { 48.dp.toPx() }
 
     // 图片缩放与平移（由下方统一手势处理器驱动）
@@ -126,10 +138,30 @@ fun CropScreen(vm: AppViewModel) {
 
                 // 裁剪框遮罩层（固定不缩放），并承载全部手势：
                 // 单指 = 调整/拖动裁剪框，框外拖动 = 新建选框；双指 = 缩放 + 平移图片；双击 = 复位
+                // 兜底缩放路径：transformable 在同节点上（旧编辑页已验证可用的配方），
+                // 主手势处理器未消费事件时它才接管
+                val fallbackState = rememberTransformableState { zoomChange, panChange, _ ->
+                    gestureLog(context, "crop FALLBACK transformable zoom=$zoomChange pan=$panChange")
+                    if (zoomChange.isFinite() && zoomChange > 0f) {
+                        imgZoom = (imgZoom * zoomChange).coerceIn(1f, 6f)
+                    }
+                    if (panChange.x.isFinite() && panChange.y.isFinite()) {
+                        imgPan = clampPan(
+                            imgPan + panChange, baseW, baseH, offX, offY,
+                            containerSize, imgZoom
+                        )
+                    }
+                }
+
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
+                        .transformable(fallbackState)
                         .pointerInput(containerSize, bmp) {
+                            runCatching {
+                                java.io.File(context.filesDir, "gesture.log").writeText("")
+                            }
+                            gestureLog(context, "crop handler started")
                             val slopPx = viewConfiguration.touchSlop
                             val doubleTapTimeout = viewConfiguration.doubleTapTimeoutMillis
                             // 双击检测跨手势记忆
@@ -141,10 +173,11 @@ fun CropScreen(vm: AppViewModel) {
                             fun normX(sx: Float) = ((sx - offX - imgPan.x) / (baseW * imgZoom)).coerceIn(0f, 1f)
                             fun normY(sy: Float) = ((sy - offY - imgPan.y) / (baseH * imgZoom)).coerceIn(0f, 1f)
 
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    gestureLog(context, "crop down pos=${down.position}")
 
-                                // 双击复位缩放与平移
+                                    // 双击复位缩放与平移
                                 if (wasTap &&
                                     down.uptimeMillis - lastUpTime < doubleTapTimeout &&
                                     (down.position - lastUpPos).getDistance() < slopPx * 2f
@@ -181,9 +214,10 @@ fun CropScreen(vm: AppViewModel) {
                                     }
 
                                     if (pressed.size != lastReportedCount) {
-                                        Log.d(
-                                            TAG, "crop pointers=${pressed.size} " +
-                                                "zoomChange=${event.calculateZoom()} mode=$mode"
+                                        gestureLog(
+                                            context,
+                                            "crop evt n=${pressed.size} " +
+                                                event.changes.joinToString { c -> "${c.id}:${if (c.pressed) "P" else "u"}@${c.position}" }
                                         )
                                         lastReportedCount = pressed.size
                                     }
@@ -196,7 +230,7 @@ fun CropScreen(vm: AppViewModel) {
                                         val panChange = event.calculatePan()
                                         if (zoomChange.isFinite() && zoomChange > 0f) {
                                             imgZoom = (imgZoom * zoomChange).coerceIn(1f, 6f)
-                                            Log.d(TAG, "crop imgZoom -> $imgZoom")
+                                            gestureLog(context, "crop imgZoom -> $imgZoom")
                                         }
                                         if (panChange.x.isFinite() && panChange.y.isFinite()) {
                                             imgPan = clampPan(
