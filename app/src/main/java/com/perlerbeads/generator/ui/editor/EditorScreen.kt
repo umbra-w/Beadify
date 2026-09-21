@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.perlerbeads.generator.export.ColorStatRow
 import com.perlerbeads.generator.export.Exporter
+import com.perlerbeads.generator.export.PdfExporter
 import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.PaletteColor
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
@@ -635,6 +636,21 @@ fun EditorScreen(vm: AppViewModel) {
                     share(context, uri, "image/png")
                 }
             },
+            onPdf = { hideWhite, mirror ->
+                showExport = false
+                val bytes = runCatching {
+                    PdfExporter.buildPatternPdf(
+                        grid,
+                        circle = vm.circleFrame,
+                        stats = statsRows(vm),
+                        totalCount = vm.totalBeadCount
+                    )
+                }.getOrNull()
+                if (bytes != null) {
+                    val uri = Exporter.savePdfToDownloads(context, bytes, "拼豆图纸_${grid.n}x${grid.m}.pdf")
+                    share(context, uri, "application/pdf")
+                }
+            },
             onStats = {
                 showExport = false
                 val bmp = Exporter.renderStatsBitmap(statsRows(vm), vm.totalBeadCount)
@@ -866,6 +882,7 @@ private fun StatsPanel(vm: AppViewModel) {
 private fun ExportDialog(
     onDismiss: () -> Unit,
     onPattern: (hideWhite: Boolean, mirror: Boolean) -> Unit,
+    onPdf: (hideWhite: Boolean, mirror: Boolean) -> Unit,
     onStats: () -> Unit,
     onList: () -> Unit
 ) {
@@ -881,6 +898,12 @@ private fun ExportDialog(
                     selected = false,
                     onClick = { onPattern(hideWhite, mirror) },
                     label = { Text("带 Key 图纸 PNG") }
+                )
+                Spacer(Modifier.height(8.dp))
+                FilterChip(
+                    selected = false,
+                    onClick = { onPdf(hideWhite, mirror) },
+                    label = { Text("图纸 PDF（1:1 打印）") }
                 )
                 Text(
                     "勾选下方选项后点击上面按钮生效",

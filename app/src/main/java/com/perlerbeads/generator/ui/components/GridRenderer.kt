@@ -48,6 +48,7 @@ object GridRenderer {
      * @param mirror 水平镜像格子位置（美纹纸背面拼贴用）。色号文字不镜像，保持可读。
      * @param circle 圆形画板几何（网格坐标系）。null 时由 circleOffsetX/Y 推导。
      *               编辑页双指调整后的圆框应传入此参数，保证导出所见即所得。
+     * @param externalColor external/透明格子的填充色（应用内浅灰，打印可传白色）
      */
     fun render(
         grid: GridData,
@@ -58,7 +59,8 @@ object GridRenderer {
         circleOffsetX: Float = 0.5f,
         circleOffsetY: Float = 0.5f,
         mirror: Boolean = false,
-        circle: com.perlerbeads.generator.model.CircleGeometry? = null
+        circle: com.perlerbeads.generator.model.CircleGeometry? = null,
+        externalColor: Int = EXTERNAL_COLOR
     ): Bitmap {
         val gridW = grid.n * cellSize
         val gridH = grid.m * cellSize
@@ -129,7 +131,7 @@ object GridRenderer {
                 val drawCol = if (mirror) grid.n - 1 - col else col
                 val left = drawCol * cellSize
                 val top = row * cellSize
-                cellPaint.color = if (cell.isExternal) EXTERNAL_COLOR else parseHex(cell.colorHex)
+                cellPaint.color = if (cell.isExternal) externalColor else parseHex(cell.colorHex)
                 drawCanvas.drawRect(
                     left.toFloat(), top.toFloat(),
                     (left + cellSize).toFloat(), (top + cellSize).toFloat(),

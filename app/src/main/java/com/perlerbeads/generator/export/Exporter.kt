@@ -155,6 +155,31 @@ object Exporter {
         }
     }
 
+    /** 保存 PDF 到 Downloads（API 29+ MediaStore；否则外部私有目录 + FileProvider）。 */
+    fun savePdfToDownloads(context: Context, bytes: ByteArray, name: String): Uri {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, name)
+                put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/PerlerBeads")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)!!
+            resolver.openOutputStream(uri)?.use { out -> out.write(bytes) }
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            return uri
+        } else {
+            val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "PerlerBeads")
+            dir.mkdirs()
+            val file = File(dir, name)
+            FileOutputStream(file).use { out -> out.write(bytes) }
+            return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        }
+    }
+
     private fun writeBitmapTo(out: OutputStream, bitmap: Bitmap) {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
     }
