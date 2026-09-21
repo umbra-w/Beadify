@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.perlerbeads.generator.navigation.Screen
+import com.perlerbeads.generator.ui.board.BoardWorkScreen
 import com.perlerbeads.generator.ui.crop.CropScreen
 import com.perlerbeads.generator.ui.editor.AppViewModel
 import com.perlerbeads.generator.ui.editor.EditorScreen
@@ -37,6 +38,7 @@ class MainActivity : ComponentActivity() {
                         Screen.Settings -> SettingsScreen(vm)
                         Screen.Editor -> EditorScreen(vm)
                         Screen.Palette -> PaletteManagerScreen(vm)
+                        Screen.BoardWork -> BoardWorkScreen(vm)
                     }
                 }
             }

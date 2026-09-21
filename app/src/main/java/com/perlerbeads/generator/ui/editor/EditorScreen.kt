@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Redo
@@ -203,6 +204,9 @@ fun EditorScreen(vm: AppViewModel) {
                     TextButton(onClick = { vm.navigate(Screen.Settings) }) { Text("返回") }
                 },
                 actions = {
+                    IconButton(onClick = { vm.enterBoardWork() }) {
+                        Icon(Icons.Filled.Dashboard, contentDescription = "分板跟做")
+                    }
                     IconButton(onClick = {
                         zoom = 1f
                         offset = Offset.Zero

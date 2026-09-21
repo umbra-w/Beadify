@@ -14,6 +14,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.perlerbeads.generator.algorithm.ColorStats
 import com.perlerbeads.generator.algorithm.autoRemoveBackground
+import com.perlerbeads.generator.algorithm.boardCount
+import com.perlerbeads.generator.algorithm.boardProgressKey
 import com.perlerbeads.generator.algorithm.calculatePixelGrid
 import com.perlerbeads.generator.algorithm.excludeColor
 import com.perlerbeads.generator.algorithm.floodFillErase
@@ -521,6 +523,62 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } finally {
             conn.disconnect()
         }
+    }
+
+    // ---------- 分板跟做 ----------
+
+    var boardSize by mutableStateOf(settings.boardSize)
+        private set
+
+    var completedBoards by mutableStateOf<Set<Int>>(emptySet())
+        private set
+
+    var currentBoard by mutableStateOf(0)
+        private set
+
+    /** 当前网格的归属判定（圆形画板 = 圆框内），供分板统计使用。 */
+    fun scopeFilter(): ((row: Int, col: Int) -> Boolean)? {
+        val g = gridData ?: return null
+        return circleFilter(g)
+    }
+
+    /** 进入分板页：加载进度并定位到第一块未完成板。 */
+    fun enterBoardWork() {
+        val g = gridData ?: return
+        completedBoards = settings.loadBoardProgress(boardProgressKey(g, boardSize))
+        currentBoard = firstIncompleteBoard(g)
+        screen = Screen.BoardWork
+    }
+
+    fun changeBoardSize(size: Int) {
+        val next = size.coerceIn(8, 96)
+        if (next == boardSize) return
+        boardSize = next
+        settings.boardSize = next
+        val g = gridData ?: return
+        completedBoards = settings.loadBoardProgress(boardProgressKey(g, boardSize))
+        currentBoard = firstIncompleteBoard(g)
+    }
+
+    fun selectBoard(index: Int) {
+        currentBoard = index
+    }
+
+    /** 标记/取消标记一块板完成；标记后自动跳到下一块未完成板。 */
+    fun toggleBoardDone(index: Int) {
+        val g = gridData ?: return
+        val next = if (index in completedBoards) completedBoards - index else completedBoards + index
+        completedBoards = next
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), next)
+        if (index in next) {
+            currentBoard = firstIncompleteBoard(g)
+        }
+    }
+
+    private fun firstIncompleteBoard(g: GridData): Int {
+        val total = boardCount(g.n, g.m, boardSize)
+        if (total <= 0) return 0
+        return (0 until total).firstOrNull { it !in completedBoards } ?: total - 1
     }
 
     // ---------- 派生 ----------

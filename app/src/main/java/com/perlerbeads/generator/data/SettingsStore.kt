@@ -60,6 +60,24 @@ class SettingsStore(context: Context) {
         prefs.edit().putString(KEY_PALETTE, obj.toString()).apply()
     }
 
+    /** 分板跟做：实体板尺寸（格），默认 29（MARD 大板）。 */
+    var boardSize: Int
+        get() = prefs.getInt(KEY_BOARD_SIZE, 29)
+        set(v) { prefs.edit().putInt(KEY_BOARD_SIZE, v.coerceIn(8, 96)).apply() }
+
+    /** 分板跟做：按进度键保存已完成板序号集合。 */
+    fun saveBoardProgress(key: String, completed: Set<Int>) {
+        prefs.edit().putString(KEY_BOARD_PROGRESS_PREFIX + key, completed.joinToString(",")).apply()
+    }
+
+    /** 分板跟做：读取已完成板序号集合；无记录返回空集。 */
+    fun loadBoardProgress(key: String): Set<Int> =
+        prefs.getString(KEY_BOARD_PROGRESS_PREFIX + key, null)
+            ?.split(",")
+            ?.mapNotNull { it.trim().toIntOrNull() }
+            ?.toSet()
+            ?: emptySet()
+
     /** 读取色板勾选；从未保存过则返回 null（表示全量）。 */
     fun loadPaletteSelections(): Map<String, Boolean>? {
         val raw = prefs.getString(KEY_PALETTE, null) ?: return null
@@ -87,5 +105,7 @@ class SettingsStore(context: Context) {
         private const val KEY_PALETTE = "palette_selections"
         private const val KEY_AI_URL = "ai_service_url"
         private const val KEY_AI_REQKEY = "ai_req_key"
+        private const val KEY_BOARD_SIZE = "board_size"
+        private const val KEY_BOARD_PROGRESS_PREFIX = "board_progress_"
     }
 }
