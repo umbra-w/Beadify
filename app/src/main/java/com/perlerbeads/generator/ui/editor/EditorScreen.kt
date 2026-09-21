@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import com.perlerbeads.generator.export.ColorStatRow
 import com.perlerbeads.generator.export.Exporter
 import com.perlerbeads.generator.export.PdfExporter
+import com.perlerbeads.generator.model.ColorSystem
 import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.PaletteColor
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
@@ -101,7 +102,7 @@ import kotlin.math.min
 
 enum class EditorTool { BRUSH, ERASER, FLOOD, REPLACE }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EditorScreen(vm: AppViewModel) {
     val context = LocalContext.current
@@ -112,6 +113,7 @@ fun EditorScreen(vm: AppViewModel) {
     var showExport by remember { mutableStateOf(false) }
     var showAiConfig by remember { mutableStateOf(false) }
     var showSaveDialog by remember { mutableStateOf(false) }
+    var showPaletteSwitch by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -574,6 +576,28 @@ fun EditorScreen(vm: AppViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp)
             ) {
+                // 色号系统快速切换（点击弹出选择，切换后现有图纸就近重映射）
+                item(key = "system_chip") {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable { showPaletteSwitch = true }
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            vm.settings.colorSystem.key,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "切换",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
                 items(vm.gridPalette, key = { it.hex }) { pc ->
                     val selected = vm.selectedPaintColor?.hex == pc.hex
                     Column(
@@ -626,8 +650,10 @@ fun EditorScreen(vm: AppViewModel) {
             onPattern = { hideWhite, mirror ->
                 showExport = false
                 val bmp = runCatching {
-                    // 圆形画板按圆框直径限制导出尺寸，保证大圆框不超内存上限
-                    val gridCell = 4096 / maxOf(grid.n, grid.m)
+                    // 分辨率预算：整图 ≤ 2000 万像素（≈80MB），单格 16~48px；
+                    // 网页版同尺寸下每格 30px，此处 90×135 图可达 40px/格，文字更清晰
+                    val cellByArea = kotlin.math.sqrt(20_000_000f / (grid.n * grid.m)).toInt()
+                    val gridCell = cellByArea.coerceIn(16, 48)
                     val circleCell = vm.circleFrame?.let { (4096f / (2f * it.radius)).toInt() } ?: Int.MAX_VALUE
                     val cell = maxOf(4, minOf(48, minOf(gridCell, circleCell)))
                     GridRenderer.render(
@@ -667,6 +693,42 @@ fun EditorScreen(vm: AppViewModel) {
                 val csv = Exporter.buildShoppingListCsv(statsRows(vm), vm.totalBeadCount)
                 val uri = Exporter.saveCsvToDownloads(context, csv, "拼豆采购清单.csv")
                 share(context, uri, "text/csv")
+            }
+        )
+    }
+
+    // ---------- 色号系统快速切换 ----------
+    if (showPaletteSwitch) {
+        AlertDialog(
+            onDismissRequest = { showPaletteSwitch = false },
+            title = { Text("切换色号系统") },
+            text = {
+                Column {
+                    Text(
+                        "切换后当前图纸颜色会就近重映射到新色板（可撤回）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ColorSystem.entries.forEach { cs ->
+                            FilterChip(
+                                selected = vm.settings.colorSystem == cs,
+                                onClick = {
+                                    vm.switchColorSystemAndRemap(cs)
+                                    showPaletteSwitch = false
+                                },
+                                label = { Text(cs.key) }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPaletteSwitch = false }) { Text("关闭") }
             }
         )
     }

@@ -24,12 +24,16 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,8 +65,15 @@ fun PaletteManagerScreen(vm: AppViewModel) {
     }
     val selectedCount = selections.count { it.value }
 
+    // 搜索：按色号或 hex 过滤（291 色中快速定位）
+    var query by remember { mutableStateOf("") }
+
     // 按前缀字母分组
-    val groups = displayPalette.groupBy { it.key.take(1).uppercase() }.toSortedMap()
+    val filtered = if (query.isBlank()) displayPalette
+    else displayPalette.filter {
+        it.key.contains(query, ignoreCase = true) || it.hex.contains(query, ignoreCase = true)
+    }
+    val groups = filtered.groupBy { it.key.take(1).uppercase() }.toSortedMap()
 
     // 每组折叠状态：默认全部展开
     val collapsed = remember { mutableStateMapOf<String, Boolean>().apply {
@@ -102,7 +113,17 @@ fun PaletteManagerScreen(vm: AppViewModel) {
         Text(
             "已选 ${selectedCount} / ${fullPalette.size} 色",
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
+
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text("搜索色号或 hex（如 A01 / FF0000）") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
         )
 
         LazyColumn(modifier = Modifier.weight(1f)) {

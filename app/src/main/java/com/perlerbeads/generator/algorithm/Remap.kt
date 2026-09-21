@@ -2,6 +2,7 @@ package com.perlerbeads.generator.algorithm
 
 import com.perlerbeads.generator.model.MappedPixel
 import com.perlerbeads.generator.model.PaletteColor
+import com.perlerbeads.generator.model.TRANSPARENT_KEY
 
 /** 颜色排除结果。 */
 data class ExcludeResult(
@@ -9,6 +10,33 @@ data class ExcludeResult(
     val success: Boolean,
     val remappedCount: Int
 )
+
+/**
+ * 把现有网格整体重映射到目标色板：每格 hex 就近取新色板色，
+ * 色号 key 同步更新为新色板体系。external/透明格原样保留。
+ * 同 hex 共享映射结果（缓存），保证同色必同映射。
+ */
+fun remapGridToNearestPalette(
+    cells: Array<Array<MappedPixel>>,
+    palette: List<PaletteColor>
+): Array<Array<MappedPixel>> {
+    if (palette.isEmpty()) return cells
+    val cache = HashMap<String, MappedPixel>()
+    return Array(cells.size) { r ->
+        Array(cells[r].size) { c ->
+            val cell = cells[r][c]
+            if (cell.isExternal || cell.key == TRANSPARENT_KEY) {
+                cell
+            } else {
+                cache.getOrPut(cell.colorHex.uppercase()) {
+                    val rgb = hexToRgb(cell.colorHex) ?: return@getOrPut cell
+                    val closest = findClosestPaletteColor(rgb, palette)
+                    MappedPixel(closest.key, closest.hex, false)
+                }
+            }
+        }
+    }
+}
 
 /**
  * 颜色排除与重映射。

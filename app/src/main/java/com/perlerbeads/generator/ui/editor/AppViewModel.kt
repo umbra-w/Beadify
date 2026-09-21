@@ -22,6 +22,7 @@ import com.perlerbeads.generator.algorithm.floodFillErase
 import com.perlerbeads.generator.algorithm.hexToRgb
 import com.perlerbeads.generator.algorithm.paintSinglePixel
 import com.perlerbeads.generator.algorithm.recalculateColorStats
+import com.perlerbeads.generator.algorithm.remapGridToNearestPalette
 import com.perlerbeads.generator.algorithm.replaceColor
 import com.perlerbeads.generator.data.PaletteRepository
 import com.perlerbeads.generator.data.ProjectStore
@@ -167,6 +168,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setColorSystem(cs: ColorSystem) {
         settings.colorSystem = cs
         refreshActivePalette()
+    }
+
+    /**
+     * 编辑页快速切换色号系统：立即换色板并对现有图纸就近重映射，
+     * 无需回设置页重新生成（项目打开的图纸同样适用）。
+     */
+    fun switchColorSystemAndRemap(cs: ColorSystem) {
+        if (cs == settings.colorSystem) return
+        settings.colorSystem = cs
+        refreshActivePalette()
+        val g = gridData ?: return
+        saveSnapshot()
+        g.cells = remapGridToNearestPalette(g.cells, activePalette)
+        gridVersion++
+        recomputeStats()
+        selectedPaintColor = activePalette.firstOrNull()
+        toast = "已切换到 ${cs.key}，颜色已就近重映射（可撤回）"
     }
 
     fun setSelectedPaint(color: PaletteColor) {

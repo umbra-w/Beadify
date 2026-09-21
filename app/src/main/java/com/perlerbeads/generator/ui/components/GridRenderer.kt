@@ -103,20 +103,14 @@ object GridRenderer {
             style = Paint.Style.STROKE
             strokeWidth = 1f
         }
-        val keyStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = 1.5f
-            textAlign = Paint.Align.CENTER
-        }
         val keyFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             style = Paint.Style.FILL
             textAlign = Paint.Align.CENTER
         }
-        val keyTextSize = cellSize * 0.62f
-        keyStroke.textSize = keyTextSize
+        val keyTextSize = cellSize * 0.5f
         keyFill.textSize = keyTextSize
+        keyFill.isFakeBoldText = true
 
         // 圆形模式：先绘网格到临时位图，再裁剪出圆形
         val gridBmp = if (isCircle) {
@@ -153,7 +147,13 @@ object GridRenderer {
                     if (!isWhite) {
                         val cx = left + cellSize / 2f
                         val cy = top + cellSize / 2f - (keyFill.descent() + keyFill.ascent()) / 2f
-                        drawCanvas.drawText(cell.key, cx, cy, keyStroke)
+                        // 对比色文字（学网页版 getContrastColor）：亮格黑字、暗格白字，加粗无描边更锐利
+                        val argb = parseHex(cell.colorHex)
+                        val r = (argb shr 16) and 0xFF
+                        val g = (argb shr 8) and 0xFF
+                        val b = argb and 0xFF
+                        val luma = (0.2126f * r + 0.7152f * g + 0.0722f * b) / 255f
+                        keyFill.color = if (luma > 0.5f) Color.BLACK else Color.WHITE
                         drawCanvas.drawText(cell.key, cx, cy, keyFill)
                     }
                 }
