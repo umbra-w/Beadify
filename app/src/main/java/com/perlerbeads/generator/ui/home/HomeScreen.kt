@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.FontDownload
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -113,6 +114,37 @@ fun HomeScreen(vm: AppViewModel) {
                     Text("文字拼豆", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "输入文字直接生成名字牌图纸",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // 我的项目
+        Card(
+            onClick = { vm.navigate(Screen.Projects) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(88.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.size(16.dp))
+                Column {
+                    Text("我的项目", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "已保存的图纸，点击继续编辑或导出",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

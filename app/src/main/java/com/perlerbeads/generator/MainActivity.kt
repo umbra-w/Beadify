@@ -15,6 +15,7 @@ import com.perlerbeads.generator.ui.editor.AppViewModel
 import com.perlerbeads.generator.ui.editor.EditorScreen
 import com.perlerbeads.generator.ui.home.HomeScreen
 import com.perlerbeads.generator.ui.palette.PaletteManagerScreen
+import com.perlerbeads.generator.ui.projects.ProjectsScreen
 import com.perlerbeads.generator.ui.settings.SettingsScreen
 import com.perlerbeads.generator.ui.text.TextBeadsScreen
 import com.perlerbeads.generator.ui.theme.PerlerBeadsTheme
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
                         Screen.Palette -> PaletteManagerScreen(vm)
                         Screen.BoardWork -> BoardWorkScreen(vm)
                         Screen.TextBeads -> TextBeadsScreen(vm)
+                        Screen.Projects -> ProjectsScreen(vm)
                     }
                 }
             }

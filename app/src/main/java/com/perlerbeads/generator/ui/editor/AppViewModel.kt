@@ -24,6 +24,8 @@ import com.perlerbeads.generator.algorithm.paintSinglePixel
 import com.perlerbeads.generator.algorithm.recalculateColorStats
 import com.perlerbeads.generator.algorithm.replaceColor
 import com.perlerbeads.generator.data.PaletteRepository
+import com.perlerbeads.generator.data.ProjectStore
+import com.perlerbeads.generator.data.SavedProject
 import com.perlerbeads.generator.data.SettingsStore
 import com.perlerbeads.generator.model.ColorSystem
 import com.perlerbeads.generator.model.CircleGeometry
@@ -53,6 +55,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val settings = SettingsStore(app)
     val paletteRepository = PaletteRepository(app)
+    val projectStore = ProjectStore(app)
 
     var screen by mutableStateOf<Screen>(Screen.Home)
         private set
@@ -145,6 +148,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshActivePalette()
+        refreshProjects()
     }
 
     // ---------- 色板 ----------
@@ -613,6 +617,59 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             toast = null
             screen = Screen.Editor
         }
+    }
+
+    // ---------- 项目保存/加载 ----------
+
+    var projects by mutableStateOf<List<ProjectStore.ProjectMeta>>(emptyList())
+        private set
+
+    fun refreshProjects() {
+        projects = projectStore.list()
+    }
+
+    /** 保存当前图纸为项目（不含原图，打开后可编辑/导出/分板，无法重新像素化）。 */
+    fun saveCurrentProject(name: String) {
+        val g = gridData ?: return
+        val saved = SavedProject(
+            name = name.ifBlank { "未命名" },
+            shape = g.shape,
+            circle = circleFrame,
+            granularity = settings.granularity,
+            mode = settings.mode,
+            dithering = settings.dithering,
+            colorSystemKey = settings.colorSystem.key,
+            cells = g.cells
+        )
+        projectStore.save(saved)
+        refreshProjects()
+        toast = "已保存到我的项目"
+    }
+
+    fun openProject(id: String) {
+        val p = projectStore.load(id) ?: run {
+            toast = "项目读取失败"
+            return
+        }
+        gridData = GridData(p.n, p.m, p.cells, emptySet(), p.shape)
+        circleFrame = p.circle
+        bitmap = null
+        excludedHexes = emptySet()
+        settings.granularity = p.granularity
+        settings.mode = p.mode
+        settings.dithering = p.dithering
+        settings.colorSystem = ColorSystem.fromKey(p.colorSystemKey)
+        refreshActivePalette()
+        clearEditHistory()
+        recomputeStats()
+        selectedPaintColor = gridPalette.firstOrNull()
+        toast = "已打开项目"
+        screen = Screen.Editor
+    }
+
+    fun deleteProject(id: String) {
+        projectStore.delete(id)
+        refreshProjects()
     }
 
     // ---------- 派生 ----------

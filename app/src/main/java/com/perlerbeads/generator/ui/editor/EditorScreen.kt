@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Refresh
@@ -110,6 +111,7 @@ fun EditorScreen(vm: AppViewModel) {
     var showStats by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     var showAiConfig by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -207,6 +209,9 @@ fun EditorScreen(vm: AppViewModel) {
                 actions = {
                     IconButton(onClick = { vm.enterBoardWork() }) {
                         Icon(Icons.Filled.Dashboard, contentDescription = "分板跟做")
+                    }
+                    IconButton(onClick = { showSaveDialog = true }) {
+                        Icon(Icons.Filled.Save, contentDescription = "保存项目")
                     }
                     IconButton(onClick = {
                         zoom = 1f
@@ -662,6 +667,33 @@ fun EditorScreen(vm: AppViewModel) {
                 val csv = Exporter.buildShoppingListCsv(statsRows(vm), vm.totalBeadCount)
                 val uri = Exporter.saveCsvToDownloads(context, csv, "拼豆采购清单.csv")
                 share(context, uri, "text/csv")
+            }
+        )
+    }
+
+    // ---------- 保存项目对话框 ----------
+    if (showSaveDialog) {
+        var saveName by remember { mutableStateOf("拼豆_${grid.n}x${grid.m}") }
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("保存为项目") },
+            text = {
+                OutlinedTextField(
+                    value = saveName,
+                    onValueChange = { saveName = it },
+                    label = { Text("项目名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.saveCurrentProject(saveName)
+                    showSaveDialog = false
+                }) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) { Text("取消") }
             }
         )
     }
