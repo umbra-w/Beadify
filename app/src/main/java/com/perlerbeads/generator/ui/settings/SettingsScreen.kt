@@ -44,6 +44,9 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 fun SettingsScreen(vm: AppViewModel) {
     var granularity by remember { mutableFloatStateOf(vm.settings.granularity.toFloat()) }
     var mode by remember { mutableStateOf(vm.settings.mode) }
+    var gridShape by remember { mutableStateOf(vm.settings.gridShape) }
+    var circleOffsetX by remember { mutableFloatStateOf(vm.settings.circleOffsetX) }
+    var circleOffsetY by remember { mutableFloatStateOf(vm.settings.circleOffsetY) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -98,15 +101,42 @@ fun SettingsScreen(vm: AppViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
-                    selected = vm.settings.gridShape == GridShape.SQUARE,
-                    onClick = { vm.settings.gridShape = GridShape.SQUARE },
+                    selected = gridShape == GridShape.SQUARE,
+                    onClick = { gridShape = GridShape.SQUARE },
                     label = { Text("方形") }
                 )
                 FilterChip(
-                    selected = vm.settings.gridShape == GridShape.CIRCLE,
-                    onClick = { vm.settings.gridShape = GridShape.CIRCLE },
+                    selected = gridShape == GridShape.CIRCLE,
+                    onClick = { gridShape = GridShape.CIRCLE },
                     label = { Text("圆形") }
                 )
+            }
+
+            // 圆形模式下显示圆板覆盖范围控制：
+            // 横图只有左右位置有意义，竖图只有上下位置有意义，接近正方形时无需调整
+            if (gridShape == GridShape.CIRCLE) {
+                Spacer(Modifier.height(12.dp))
+                Text("圆形画板覆盖范围", style = MaterialTheme.typography.titleMedium)
+                val imgAspect = vm.bitmap?.let { it.height.toFloat() / it.width.toFloat() } ?: 1f
+                if (imgAspect > 1.05f) {
+                    Text(
+                        "图案比圆形画板高，选择圆板圈住图案的哪一段：${describeCircleOffset(circleOffsetY, true)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Slider(value = circleOffsetY, onValueChange = { circleOffsetY = it }, valueRange = 0f..1f)
+                } else if (imgAspect < 0.95f) {
+                    Text(
+                        "图案比圆形画板宽，选择圆板圈住图案的哪一段：${describeCircleOffset(circleOffsetX, false)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Slider(value = circleOffsetX, onValueChange = { circleOffsetX = it }, valueRange = 0f..1f)
+                } else {
+                    Text(
+                        "图案接近正方形，圆板可完整覆盖，无需调整",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -149,6 +179,9 @@ fun SettingsScreen(vm: AppViewModel) {
                     onClick = {
                         vm.settings.granularity = granularity.toInt()
                         vm.settings.mode = mode
+                        vm.settings.gridShape = gridShape
+                        vm.settings.circleOffsetX = circleOffsetX
+                        vm.settings.circleOffsetY = circleOffsetY
                         vm.generate()
                     },
                     modifier = Modifier
@@ -167,4 +200,19 @@ fun SettingsScreen(vm: AppViewModel) {
             }
         }
     }
+}
+/**
+ * 把圆板覆盖位置的 0..1 滑块值转成用户能读懂的描述。
+ * @param vertical 竖图（上下取景）用「顶部/底部」，横图（左右取景）用「左侧/右侧」。
+ */
+private fun describeCircleOffset(v: Float, vertical: Boolean): String {
+    val pct = (v * 100).toInt()
+    val pos = when {
+        v < 0.2f -> if (vertical) "最顶部" else "最左侧"
+        v < 0.4f -> if (vertical) "偏上" else "偏左"
+        v < 0.6f -> "居中"
+        v < 0.8f -> if (vertical) "偏下" else "偏右"
+        else -> if (vertical) "最底部" else "最右侧"
+    }
+    return "$pos（$pct%）"
 }

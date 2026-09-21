@@ -24,12 +24,13 @@ import com.perlerbeads.generator.algorithm.replaceColor
 import com.perlerbeads.generator.data.PaletteRepository
 import com.perlerbeads.generator.data.SettingsStore
 import com.perlerbeads.generator.model.ColorSystem
-import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.GridData
+import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.MappedPixel
 import com.perlerbeads.generator.model.PaletteColor
 import com.perlerbeads.generator.model.RgbColor
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
+import com.perlerbeads.generator.model.circleGeometry
 import com.perlerbeads.generator.model.transparentColorData
 import com.perlerbeads.generator.navigation.Screen
 import kotlinx.coroutines.Dispatchers
@@ -40,8 +41,6 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sqrt
 
 /** 应用级共享状态与编辑操作。 */
 private const val DEFAULT_AI_PROMPT =
@@ -220,24 +219,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
-                val shape = settings.gridShape
-                // 圆形遮罩：圆外格标记为外部
-                if (shape == GridShape.CIRCLE) {
-                    val cx = n / 2f
-                    val cy = m / 2f
-                    val r = min(cx, cy) - 0.5f
-                    for (row in 0 until m) {
-                        for (col in 0 until n) {
-                            val dist = sqrt(
-                                ((col - cx) * (col - cx) + (row - cy) * (row - cy)).toDouble()
-                            )
-                            if (dist > r) {
-                                initial[row][col] = transparentColorData
-                            }
-                        }
-                    }
-                }
-                GridData(n, m, initial, initialKeys, shape)
+                GridData(n, m, initial, initialKeys, settings.gridShape)
             }
             gridData = result
             clearEditHistory()
@@ -250,38 +232,80 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun recomputeStats() {
         val g = gridData ?: return
-        stats = recalculateColorStats(g.cells)
+        stats = recalculateColorStats(g.cells, circleFilter(g))
+    }
+
+    /** 圆形画板：只统计/编辑圆内格子；方形返回 null（不过滤）。 */
+    private fun circleFilter(g: GridData): ((Int, Int) -> Boolean)? {
+        if (g.shape != GridShape.CIRCLE) return null
+        val geo = circleGeometry(g.n, g.m, settings.circleOffsetX, settings.circleOffsetY)
+        return { row, col -> geo.contains(row, col) }
+    }
+
+    /** 该格子是否可编辑（越界或圆形画板圆外不可编辑）。 */
+    private fun isEditable(g: GridData, row: Int, col: Int): Boolean {
+        if (row !in 0 until g.m || col !in 0 until g.n) return false
+        if (g.shape != GridShape.CIRCLE) return true
+        val geo = circleGeometry(g.n, g.m, settings.circleOffsetX, settings.circleOffsetY)
+        return geo.contains(row, col)
     }
 
     // ---------- 编辑 ----------
 
-    fun paintCell(row: Int, col: Int, color: PaletteColor?) {
-        val g = gridData ?: return
-        val c = color ?: selectedPaintColor ?: return
+    // 笔画级撤销：beginStroke 存一次快照，strokePaint/strokeErase 不逐步存，
+    // endStroke 时无变化则回滚快照 —— 一笔拖动 = 一步撤回。
+
+    private var strokeActive = false
+    private var strokeChanged = false
+
+    fun beginStroke() {
+        if (strokeActive) return
         saveSnapshot()
+        strokeActive = true
+        strokeChanged = false
+    }
+
+    fun strokePaint(row: Int, col: Int) {
+        val g = gridData ?: return
+        if (!isEditable(g, row, col)) return
+        val c = selectedPaintColor ?: return
+        if (!strokeActive) beginStroke()
         val res = paintSinglePixel(g.cells, row, col, MappedPixel(c.key, c.hex, false))
         if (res.hasChange) {
             g.cells = res.grid
+            strokeChanged = true
             gridVersion++
-            recomputeStats()
         }
     }
 
-    fun eraseCell(row: Int, col: Int) {
+    fun strokeErase(row: Int, col: Int) {
         val g = gridData ?: return
+        if (!isEditable(g, row, col)) return
         val cell = g.cells.getOrNull(row)?.getOrNull(col) ?: return
         if (cell.isExternal) return
-        saveSnapshot()
+        if (!strokeActive) beginStroke()
         val res = paintSinglePixel(g.cells, row, col, transparentColorData)
         if (res.hasChange) {
             g.cells = res.grid
+            strokeChanged = true
             gridVersion++
-            recomputeStats()
         }
+    }
+
+    fun endStroke() {
+        if (!strokeActive) return
+        if (strokeChanged) {
+            recomputeStats()
+        } else if (editHistory.isNotEmpty()) {
+            editHistory.removeAt(editHistory.lastIndex)
+        }
+        strokeActive = false
+        strokeChanged = false
     }
 
     fun floodErase(row: Int, col: Int) {
         val g = gridData ?: return
+        if (!isEditable(g, row, col)) return
         val cell = g.cells.getOrNull(row)?.getOrNull(col) ?: return
         if (cell.isExternal) return
         saveSnapshot()

@@ -1,12 +1,13 @@
 package com.perlerbeads.generator.ui.editor
 
 import android.content.Intent
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Redo
@@ -62,25 +64,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.perlerbeads.generator.export.ColorStatRow
 import com.perlerbeads.generator.export.Exporter
+import com.perlerbeads.generator.model.GridShape
 import com.perlerbeads.generator.model.PaletteColor
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
+import com.perlerbeads.generator.model.circleGeometry
 import com.perlerbeads.generator.navigation.Screen
 import com.perlerbeads.generator.ui.components.GridRenderer
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.min
 
 enum class EditorTool { BRUSH, ERASER, FLOOD, REPLACE }
@@ -91,11 +99,6 @@ fun EditorScreen(vm: AppViewModel) {
     val context = LocalContext.current
     val grid = vm.gridData ?: return
 
-    val preview = remember(grid, vm.gridVersion) {
-        GridRenderer.renderCapped(grid, maxDim = 2048, showBorders = true)
-    }
-    val cellSizeP = preview.width / grid.n
-
     var tool by remember { mutableStateOf(EditorTool.BRUSH) }
     var showStats by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
@@ -103,6 +106,8 @@ fun EditorScreen(vm: AppViewModel) {
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    // hex → Compose Color 缓存（普通 HashMap，绘制期写入安全）
+    val colorCache = remember(grid) { HashMap<String, Color>() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -112,6 +117,9 @@ fun EditorScreen(vm: AppViewModel) {
                     TextButton(onClick = { vm.navigate(Screen.Settings) }) { Text("返回") }
                 },
                 actions = {
+                    IconButton(onClick = { zoom = 1f; offset = Offset.Zero }) {
+                        Icon(Icons.Filled.CenterFocusStrong, contentDescription = "复位视图")
+                    }
                     IconButton(onClick = { showStats = !showStats }) {
                         Icon(Icons.Filled.Visibility, contentDescription = "统计")
                     }
@@ -121,7 +129,7 @@ fun EditorScreen(vm: AppViewModel) {
                 }
             )
 
-            // ---------- 画布 ----------
+            // ---------- 画布（矢量分层渲染：格子层 / 网格线层 / 圆形遮罩层） ----------
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -129,50 +137,201 @@ fun EditorScreen(vm: AppViewModel) {
                     .background(Color(0xFF2A2A2E))
                     .onSizeChanged { containerSize = it }
             ) {
-                if (containerSize != IntSize.Zero && preview.width > 0) {
-                    val s0 = min(
-                        containerSize.width.toFloat() / preview.width,
-                        containerSize.height.toFloat() / preview.height
-                    )
-                    val baseW = preview.width * s0
-                    val baseH = preview.height * s0
+                if (containerSize != IntSize.Zero) {
+                    val cw = containerSize.width.toFloat()
+                    val ch = containerSize.height.toFloat()
+                    // zoom=1 时整个网格恰好适配容器
+                    val baseCell = min(cw / grid.n, ch / grid.m)
+                    val circle = if (grid.shape == GridShape.CIRCLE) {
+                        circleGeometry(grid.n, grid.m, vm.settings.circleOffsetX, vm.settings.circleOffsetY)
+                    } else null
 
-                    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-                        zoom = (zoom * zoomChange).coerceIn(0.5f, 10f)
-                        offset += panChange
+                    fun cellAt(pos: Offset): Pair<Int, Int>? {
+                        val cell = baseCell * zoom
+                        if (cell <= 0f) return null
+                        val ox = (cw - grid.n * cell) / 2f + offset.x
+                        val oy = (ch - grid.m * cell) / 2f + offset.y
+                        val col = floor((pos.x - ox) / cell).toInt()
+                        val row = floor((pos.y - oy) / cell).toInt()
+                        return if (col in 0 until grid.n && row in 0 until grid.m) row to col else null
                     }
 
-                    // 手势处理 + 位图绘制
-                    Box(
+                    Canvas(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(grid, tool, containerSize) {
-                                detectTapGestures(
-                                    onTap = { pos -> handleTap(vm, grid, tool, pos, offset, zoom, s0, cellSizeP, baseW, baseH, false) },
-                                    onLongPress = { pos -> handleTap(vm, grid, tool, pos, offset, zoom, s0, cellSizeP, baseW, baseH, true) }
-                                )
-                            }
-                            .transformable(transformState)
-                    ) {
-                        val density = LocalDensity.current
-                        Image(
-                            bitmap = preview.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.FillBounds,
-                            modifier = Modifier
-                                .size(
-                                    width = with(density) { baseW.toDp() },
-                                    height = with(density) { baseH.toDp() }
-                                )
-                                .align(Alignment.Center)
-                                .graphicsLayer {
-                                    scaleX = zoom
-                                    scaleY = zoom
-                                    translationX = offset.x
-                                    translationY = offset.y
-                                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                            .pointerInput(grid, containerSize) {
+                                // 统一手势：单指=工具（单击/拖动连涂/长按洪水擦除），双指=缩放平移
+                                val slopPx = viewConfiguration.touchSlop
+                                val longPressTimeout = viewConfiguration.longPressTimeoutMillis
+
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val downCell = cellAt(down.position)
+                                    var mode = 0            // 0 待定 1 工具 2 缩放平移
+                                    var painting = false    // 笔画进行中
+                                    var longFired = false
+                                    var pastSlop = false
+                                    var lastCell: Pair<Int, Int>? = null
+                                    var last = down.position
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val pressed = event.changes.filter { it.pressed }
+                                        if (pressed.isEmpty()) break
+
+                                        if (pressed.size >= 2) {
+                                            // 双指：中断笔画，进入缩放平移
+                                            if (painting) { vm.endStroke(); painting = false }
+                                            mode = 2
+                                            val zoomChange = event.calculateZoom()
+                                            val panChange = event.calculatePan()
+                                            if (zoomChange.isFinite() && zoomChange > 0f) {
+                                                zoom = (zoom * zoomChange).coerceIn(0.5f, 12f)
+                                            }
+                                            if (panChange.x.isFinite() && panChange.y.isFinite()) {
+                                                offset = clampEditorOffset(
+                                                    offset + panChange, cw, ch,
+                                                    grid.n * baseCell * zoom, grid.m * baseCell * zoom
+                                                )
+                                            }
+                                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                            last = pressed[0].position
+                                            continue
+                                        }
+
+                                        val change = pressed[0]
+
+                                        if (mode == 2) {
+                                            // 双指抬一根：剩余单指继续平移
+                                            offset = clampEditorOffset(
+                                                offset + (change.position - last), cw, ch,
+                                                grid.n * baseCell * zoom, grid.m * baseCell * zoom
+                                            )
+                                            last = change.position
+                                            if (change.positionChanged()) change.consume()
+                                            continue
+                                        }
+
+                                        if (!pastSlop) {
+                                            val moved = (change.position - down.position).getDistance()
+                                            if (!longFired && moved < slopPx &&
+                                                change.uptimeMillis - down.uptimeMillis > longPressTimeout
+                                            ) {
+                                                // 长按：洪水擦除（任意工具）
+                                                longFired = true
+                                                downCell?.let { vm.floodErase(it.first, it.second) }
+                                                change.consume()
+                                                continue
+                                            }
+                                            if (moved >= slopPx && !longFired) {
+                                                pastSlop = true
+                                                if (tool == EditorTool.BRUSH || tool == EditorTool.ERASER) {
+                                                    mode = 1
+                                                    vm.beginStroke()
+                                                    painting = true
+                                                    forEachCellBetween(null, downCell) { r, c -> applyPaint(vm, tool, r, c) }
+                                                    lastCell = downCell
+                                                    val cur = cellAt(change.position)
+                                                    if (cur != null && cur != lastCell) {
+                                                        forEachCellBetween(lastCell, cur) { r, c -> applyPaint(vm, tool, r, c) }
+                                                        lastCell = cur
+                                                    }
+                                                } else {
+                                                    // 洪水/替换工具下单指拖动 = 平移画布
+                                                    mode = 2
+                                                    last = change.position
+                                                }
+                                            }
+                                        } else if (painting) {
+                                            // 拖动连涂：补上两事件之间跳过的格子
+                                            val cur = cellAt(change.position)
+                                            if (cur != null && cur != lastCell) {
+                                                forEachCellBetween(lastCell, cur) { r, c -> applyPaint(vm, tool, r, c) }
+                                                lastCell = cur
+                                            }
+                                        }
+                                        if (change.positionChanged()) change.consume()
+                                    }
+
+                                    // 手势结束
+                                    if (painting) {
+                                        vm.endStroke()
+                                    } else if (!pastSlop && !longFired && mode != 2) {
+                                        // 单击
+                                        downCell?.let { (row, col) ->
+                                            when (tool) {
+                                                EditorTool.BRUSH -> { vm.beginStroke(); vm.strokePaint(row, col); vm.endStroke() }
+                                                EditorTool.ERASER -> { vm.beginStroke(); vm.strokeErase(row, col); vm.endStroke() }
+                                                EditorTool.FLOOD -> vm.floodErase(row, col)
+                                                EditorTool.REPLACE -> pickReplaceSource(vm, grid, row, col)
+                                            }
+                                        }
+                                    }
                                 }
-                        )
+                            }
+                    ) {
+                        // 读取 gridVersion 建立绘制依赖：格子数据变化时重绘
+                        @Suppress("UNUSED_VARIABLE")
+                        val version = vm.gridVersion
+                        val cells = grid.cells
+
+                        val cell = baseCell * zoom
+                        val ox = (cw - grid.n * cell) / 2f + offset.x
+                        val oy = (ch - grid.m * cell) / 2f + offset.y
+
+                        // 只绘制可视范围内的格子
+                        val colStart = maxOf(0, floor(-ox / cell).toInt())
+                        val colEnd = minOf(grid.n - 1, ceil((size.width - ox) / cell).toInt())
+                        val rowStart = maxOf(0, floor(-oy / cell).toInt())
+                        val rowEnd = minOf(grid.m - 1, ceil((size.height - oy) / cell).toInt())
+
+                        if (colStart <= colEnd && rowStart <= rowEnd) {
+                            for (r in rowStart..rowEnd) {
+                                for (c in colStart..colEnd) {
+                                    val px = cells[r][c]
+                                    val color = if (px.isExternal) {
+                                        EXTERNAL_CELL_COLOR
+                                    } else {
+                                        colorCache.getOrPut(px.colorHex) { Color(GridRenderer.parseHex(px.colorHex)) }
+                                    }
+                                    // +1px 重叠避免高缩放下的抗锯齿缝隙
+                                    drawRect(
+                                        color,
+                                        topLeft = Offset(ox + c * cell, oy + r * cell),
+                                        size = Size(cell + 1f, cell + 1f)
+                                    )
+                                }
+                            }
+                            // 网格线：格子够大才画，屏幕空间恒定 1px —— 放大不会出现粗白线
+                            if (cell >= 8f) {
+                                val left = ox + colStart * cell
+                                val right = ox + (colEnd + 1) * cell
+                                val top = oy + rowStart * cell
+                                val bottom = oy + (rowEnd + 1) * cell
+                                for (c in colStart..colEnd + 1) {
+                                    val x = ox + c * cell
+                                    drawLine(GRID_LINE_COLOR, Offset(x, top), Offset(x, bottom), 1f)
+                                }
+                                for (r in rowStart..rowEnd + 1) {
+                                    val y = oy + r * cell
+                                    drawLine(GRID_LINE_COLOR, Offset(left, y), Offset(right, y), 1f)
+                                }
+                            }
+                        }
+
+                        // 圆形遮罩层：圆外压暗 + 白色圆环（屏幕空间恒定线宽，与内容分层）
+                        if (circle != null) {
+                            val ccx = ox + circle.centerX * cell
+                            val ccy = oy + circle.centerY * cell
+                            val rr = circle.radius * cell
+                            val dim = Path().apply {
+                                addRect(Rect(0f, 0f, size.width, size.height))
+                                addOval(Rect(ccx - rr, ccy - rr, ccx + rr, ccy + rr))
+                                fillType = PathFillType.EvenOdd
+                            }
+                            drawPath(dim, Color.Black.copy(alpha = 0.62f))
+                            drawCircle(Color.White, radius = rr, center = Offset(ccx, ccy), style = Stroke(2.5f))
+                        }
                     }
                 }
             }
@@ -332,11 +491,14 @@ fun EditorScreen(vm: AppViewModel) {
     if (showExport) {
         ExportDialog(
             onDismiss = { showExport = false },
-            onPattern = {
+            onPattern = { hideWhite, mirror ->
                 showExport = false
                 val bmp = runCatching {
                     val cell = maxOf(4, minOf(48, 4096 / maxOf(grid.n, grid.m)))
-                    GridRenderer.render(grid, cell, showBorders = true, showKeys = true)
+                    GridRenderer.render(
+                        grid, cell, showBorders = true, showKeys = true,
+                        hideWhiteKeys = hideWhite, mirror = mirror
+                    )
                 }.getOrNull()
                 if (bmp != null) {
                     val uri = Exporter.savePngToPictures(context, bmp, "拼豆图纸_${grid.n}x${grid.m}.png")
@@ -420,40 +582,62 @@ private fun AiConfigDialog(
     )
 }
 
-private fun handleTap(
+/** external/已擦除格子的显示色（与 GridRenderer.EXTERNAL_COLOR 一致）。 */
+private val EXTERNAL_CELL_COLOR = Color(0xFFDCDCDC)
+private val GRID_LINE_COLOR = Color(0x33FFFFFF)
+
+private fun applyPaint(vm: AppViewModel, tool: EditorTool, row: Int, col: Int) {
+    when (tool) {
+        EditorTool.BRUSH -> vm.strokePaint(row, col)
+        EditorTool.ERASER -> vm.strokeErase(row, col)
+        else -> {}
+    }
+}
+
+private fun pickReplaceSource(
     vm: AppViewModel,
     grid: com.perlerbeads.generator.model.GridData,
-    tool: EditorTool,
-    pos: Offset,
-    offset: Offset,
-    zoom: Float,
-    s0: Float,
-    cellSizeP: Int,
-    baseW: Float,
-    baseH: Float,
-    longPress: Boolean
+    row: Int,
+    col: Int
 ) {
-    val centerX = baseW / 2f
-    val centerY = baseH / 2f
-    val localX = centerX + (pos.x - offset.x - centerX) / zoom
-    val localY = centerY + (pos.y - offset.y - centerY) / zoom
-    val col = (localX / s0 / cellSizeP).toInt()
-    val row = (localY / s0 / cellSizeP).toInt()
-    if (col in 0 until grid.n && row in 0 until grid.m) {
-        when {
-            longPress -> vm.floodErase(row, col)
-            tool == EditorTool.BRUSH -> vm.paintCell(row, col, vm.selectedPaintColor)
-            tool == EditorTool.ERASER -> vm.eraseCell(row, col)
-            tool == EditorTool.FLOOD -> vm.floodErase(row, col)
-            tool == EditorTool.REPLACE -> {
-                val cell = grid.cells[row][col]
-                if (!cell.isExternal && cell.key != TRANSPARENT_KEY) {
-                    vm.activePalette.firstOrNull { it.hex.uppercase() == cell.colorHex.uppercase() }
-                        ?.let { vm.setSelectedPaint(it) }
-                }
-            }
-        }
+    val cell = grid.cells.getOrNull(row)?.getOrNull(col) ?: return
+    if (!cell.isExternal && cell.key != TRANSPARENT_KEY) {
+        vm.activePalette.firstOrNull { it.hex.uppercase() == cell.colorHex.uppercase() }
+            ?.let { vm.setSelectedPaint(it) }
     }
+}
+
+/** 涂色路径插值：把 from→to 之间跳过的格子逐个涂上，快速滑动不留断点。 */
+private fun forEachCellBetween(
+    from: Pair<Int, Int>?,
+    to: Pair<Int, Int>?,
+    action: (Int, Int) -> Unit
+) {
+    if (to == null) return
+    if (from == null) {
+        action(to.first, to.second)
+        return
+    }
+    val (r0, c0) = from
+    val (r1, c1) = to
+    val steps = maxOf(abs(r1 - r0), abs(c1 - c0))
+    if (steps == 0) {
+        action(r1, c1)
+        return
+    }
+    for (i in 1..steps) {
+        action(r0 + (r1 - r0) * i / steps, c0 + (c1 - c0) * i / steps)
+    }
+}
+
+/**
+ * 平移钳制：网格中心对齐容器中心时，允许的最大偏移为 |容器-网格|/2，
+ * 即网格不会整体滑出容器。
+ */
+private fun clampEditorOffset(off: Offset, cw: Float, ch: Float, gw: Float, gh: Float): Offset {
+    val maxX = abs(cw - gw) / 2f
+    val maxY = abs(ch - gh) / 2f
+    return Offset(off.x.coerceIn(-maxX, maxX), off.y.coerceIn(-maxY, maxY))
 }
 
 private fun statsRows(vm: AppViewModel): List<ColorStatRow> {
@@ -551,7 +735,7 @@ private fun StatsPanel(vm: AppViewModel) {
 @Composable
 private fun ExportDialog(
     onDismiss: () -> Unit,
-    onPattern: () -> Unit,
+    onPattern: (hideWhite: Boolean, mirror: Boolean) -> Unit,
     onStats: () -> Unit,
     onList: () -> Unit
 ) {
@@ -563,7 +747,16 @@ private fun ExportDialog(
         title = { Text("导出") },
         text = {
             Column {
-                FilterChip(selected = false, onClick = onPattern, label = { Text("带 Key 图纸 PNG") })
+                FilterChip(
+                    selected = false,
+                    onClick = { onPattern(hideWhite, mirror) },
+                    label = { Text("带 Key 图纸 PNG") }
+                )
+                Text(
+                    "勾选下方选项后点击上面按钮生效",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(8.dp))
                 FilterChip(selected = false, onClick = onStats, label = { Text("颜色统计图 PNG") })
                 Spacer(Modifier.height(8.dp))
@@ -575,7 +768,7 @@ private fun ExportDialog(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = mirror, onCheckedChange = { mirror = it })
-                    Text("水平镜像图纸", style = MaterialTheme.typography.bodySmall)
+                    Text("水平镜像图纸（色号文字不镜像）", style = MaterialTheme.typography.bodySmall)
                 }
             }
         },

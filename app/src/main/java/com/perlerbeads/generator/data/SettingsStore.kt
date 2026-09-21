@@ -34,6 +34,15 @@ class SettingsStore(context: Context) {
         }
         set(v) { prefs.edit().putString(KEY_SHAPE, v.name).apply() }
 
+    /** 圆形模式下，圆心偏移（0..1）。0.5=居中。 */
+    var circleOffsetX: Float
+        get() = prefs.getFloat(KEY_CIRCLE_X, 0.5f)
+        set(v) { prefs.edit().putFloat(KEY_CIRCLE_X, v.coerceIn(0f, 1f)).apply() }
+
+    var circleOffsetY: Float
+        get() = prefs.getFloat(KEY_CIRCLE_Y, 0.5f)
+        set(v) { prefs.edit().putFloat(KEY_CIRCLE_Y, v.coerceIn(0f, 1f)).apply() }
+
     /** AI 服务地址（网页版 /api/ai-optimize 的完整 URL），空 = 未配置。 */
     var aiServiceUrl: String
         get() = prefs.getString(KEY_AI_URL, "") ?: ""
@@ -73,6 +82,8 @@ class SettingsStore(context: Context) {
         private const val KEY_GRANULARITY = "granularity"
         private const val KEY_MODE = "pixelation_mode"
         private const val KEY_SHAPE = "grid_shape"
+        private const val KEY_CIRCLE_X = "circle_offset_x"
+        private const val KEY_CIRCLE_Y = "circle_offset_y"
         private const val KEY_PALETTE = "palette_selections"
         private const val KEY_AI_URL = "ai_service_url"
         private const val KEY_AI_REQKEY = "ai_req_key"

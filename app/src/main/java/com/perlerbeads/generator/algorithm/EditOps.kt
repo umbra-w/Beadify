@@ -103,12 +103,19 @@ fun paintSinglePixel(
 
 /**
  * 重新统计颜色与总数，忽略 external/透明。对应 pixelEditingUtils.ts L166。
+ * @param cellFilter 可选格子过滤（如圆形画板只统计圆内）；null = 全部格子。
  */
-fun recalculateColorStats(grid: Array<Array<MappedPixel>>): ColorStats {
+fun recalculateColorStats(
+    grid: Array<Array<MappedPixel>>,
+    cellFilter: ((row: Int, col: Int) -> Boolean)? = null
+): ColorStats {
     val counts = HashMap<String, Int>()
     var total = 0
-    for (row in grid) {
-        for (cell in row) {
+    for (r in grid.indices) {
+        val row = grid[r]
+        for (c in row.indices) {
+            val cell = row[c]
+            if (cellFilter != null && !cellFilter(r, c)) continue
             if (!cell.isExternal && cell.key != TRANSPARENT_KEY) {
                 val hex = cell.colorHex.uppercase()
                 counts[hex] = (counts[hex] ?: 0) + 1

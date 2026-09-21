@@ -1,7 +1,5 @@
 package com.perlerbeads.generator.model
 
-import kotlin.math.min
-
 /** 拼豆色号系统（店家）。 */
 enum class ColorSystem(val key: String) {
     MARD("MARD"),
@@ -67,9 +65,34 @@ class GridData(
 ) {
     fun deepCopyCells(): Array<Array<MappedPixel>> =
         Array(m) { r -> Array(n) { c -> cells[r][c] } }
+}
 
-    /** 圆形模式下计算中心与半径。 */
-    val circleCenterX: Float get() = n / 2f
-    val circleCenterY: Float get() = m / 2f
-    val circleRadius: Float get() = min(circleCenterX, circleCenterY) - 0.5f
+/**
+ * 圆形画板几何（格子坐标系，单位=格）。
+ * 与 GridRenderer 的像素级圆形裁剪语义一致：
+ * 圆内 = 会被拼豆/导出/统计的区域；圆外 = 仅显示、不计数、不可编辑。
+ */
+data class CircleGeometry(
+    val centerX: Float,
+    val centerY: Float,
+    val radius: Float
+) {
+    /** 格子中心是否在圆内。 */
+    fun contains(row: Int, col: Int): Boolean {
+        val dx = col + 0.5f - centerX
+        val dy = row + 0.5f - centerY
+        return dx * dx + dy * dy <= radius * radius
+    }
+}
+
+/**
+ * 由网格尺寸与取景偏移计算圆形几何。
+ * 对应 GridRenderer 中 shiftX = -(offsetX * (gridW - outSize)) 的像素裁剪：
+ * offsetX=0 时圆覆盖图案左/上部，offsetX=1 时覆盖右/下部，0.5 居中。
+ */
+fun circleGeometry(n: Int, m: Int, offsetX: Float, offsetY: Float): CircleGeometry {
+    val outCells = minOf(n, m)
+    val cx = outCells / 2f + offsetX.coerceIn(0f, 1f) * (n - outCells)
+    val cy = outCells / 2f + offsetY.coerceIn(0f, 1f) * (m - outCells)
+    return CircleGeometry(cx, cy, outCells / 2f)
 }
