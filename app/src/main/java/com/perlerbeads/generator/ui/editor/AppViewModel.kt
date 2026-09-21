@@ -581,6 +581,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return (0 until total).firstOrNull { it !in completedBoards } ?: total - 1
     }
 
+    // ---------- 文字拼豆 ----------
+
+    /** 由文字直接生成网格（笔画用所选颜色，背景透明），成功后进入编辑器。 */
+    fun generateTextBeads(text: String, gridRows: Int, color: PaletteColor?) {
+        val c = color ?: activePalette.firstOrNull() ?: run {
+            toast = "当前色板为空，请先在色板设置中选择颜色"
+            return
+        }
+        if (text.isBlank()) {
+            toast = "请输入文字"
+            return
+        }
+        processing = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.Default) {
+                com.perlerbeads.generator.algorithm.TextBeads.renderTextGrid(text, gridRows, c)
+            }
+            processing = false
+            if (result == null) {
+                toast = "文字无法生成有效笔画"
+                return@launch
+            }
+            gridData = result
+            circleFrame = null
+            bitmap = null
+            excludedHexes = emptySet()
+            clearEditHistory()
+            recomputeStats()
+            selectedPaintColor = c
+            toast = null
+            screen = Screen.Editor
+        }
+    }
+
     // ---------- 派生 ----------
 
     /** 网格中实际出现的颜色（hex 去重），按使用量降序。 */

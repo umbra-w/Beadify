@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.FontDownload
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -84,6 +85,37 @@ fun HomeScreen(vm: AppViewModel) {
                 Text("导入图片或拍照", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(4.dp))
                 Text("JPG / PNG", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // 文字拼豆
+        Card(
+            onClick = { vm.navigate(Screen.TextBeads) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(88.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.FontDownload,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.size(16.dp))
+                Column {
+                    Text("文字拼豆", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "输入文字直接生成名字牌图纸",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
 

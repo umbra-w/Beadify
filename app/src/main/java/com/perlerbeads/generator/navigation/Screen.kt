@@ -8,6 +8,7 @@ sealed interface Screen {
     data object Editor : Screen
     data object Palette : Screen
     data object BoardWork : Screen
+    data object TextBeads : Screen
 
     /** 返回上一页。Home 无上一页。 */
     fun back(): Screen? = when (this) {
@@ -16,6 +17,7 @@ sealed interface Screen {
         Editor -> Settings
         Palette -> Settings
         BoardWork -> Editor
+        TextBeads -> Home
         Home -> null
     }
 }
