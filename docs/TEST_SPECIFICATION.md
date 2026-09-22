@@ -1,159 +1,153 @@
-# 拼豆 Android 原生生成器 · 标准化测试规范说明书 (Test Specification)
+# 拼豆 Android 原生生成器 · 标准化测试规范说明书 (Test Specification v2.0)
 
-版本：v1.2  
-适用工程：`perler-beads-android` (Kotlin / Jetpack Compose / Android 14)  
-测试环境要求：
-- 构建环境：JDK 17+, Gradle 8.x
-- 运行环境：Android 14 (物理测试设备: Xiaomi 23129RAA4G / Redmi 13C, 分辨率 720×1612, 320dpi)
-- 工具链：Android SDK Platform-Tools (adb, aapt), Android Lint, JUnit4
+**版本**：v2.0 (包含阶段三多品牌权威色板、智能豆仓、Oklab平替与自适应排版)  
+**适用工程**：`perler-beads-android` (Kotlin / Jetpack Compose / Android 14)  
+**测试物理设备**：Xiaomi Redmi 13C (`P1DAA88A0NFP24L9999`), Android 14 (720×1612, 320dpi)  
+**基准开源对齐**：`maxcleme/beadcolors` (国际色标), `GarrusHuang/pindou-format-tool` (国内格式标准)
 
 ---
 
-## 1. 测试体系架构
-
-本工程建立“四维一体”的质量保障与测试体系：
+## 1. 测试体系架构与总体原则
 
 ```
-                    ┌────────────────────────┐
-                    │      全流程测试体系     │
-                    └───────────┬────────────┘
-         ┌──────────────┬───────┴───────┬──────────────┐
-         ▼              ▼               ▼              ▼
-   【静态代码审查】  【白盒运行态测试】 【ADB设备功能测试】 【算法质量评测】
-   - 编译器Warning  - 分支边界值分析  - 自动化脚本驱动   - 典型素材基准集
-   - Android Lint   - 异常容错回退    - 真实文件落盘校验 - 色数合规率100%
-   - 内存与生命周期 - 历史栈与状态机  - Logcat崩溃/ANR   - 孤立飞点消除率
-   - 并发协程安全   - 82+项自动化单测 - 关键节点UI截屏   - 细线保护与PSNR
+                       ┌──────────────────────────────┐
+                       │     四维一体全生命周期测试体系 │
+                       └──────────────┬───────────────┘
+          ┌────────────────┬──────────┴──────────┬────────────────┐
+          ▼                ▼                     ▼                ▼
+    【静态代码审查】  【白盒运行态测试】    【ADB真机全操作测试】  【算法对标评测】
+    - Lint 静态扫描   - 算法边界极限        - 首页4大入口全覆盖    - 典型样张基准集
+    - 空安全与越界    - Oklab平替多星级     - 设置页全选项切换     - PSNR / SSIM
+    - 内存与资源释放  - 孤立飞点平滑度      - 豆仓库存隔离持久化   - 孤立飞点消减率
+    - 协程与主线程    - 自适应排版列数      - 编辑器14+微操作      - 细线轮廓保真度
+    - 0 Lint Error   - 105+ 自动化用例     - 导出5种格式全落盘    - 可拼性综合评分
 ```
+
+### 核心原则：
+1. **真实物理设备实时验证**：严禁后台造假或静态截图拼接，全部真机测试必须基于在线物理机实时点亮屏幕执行；
+2. **全功能全操作细致遍历**：遵循“每一项小操作或者小功能都要试”的原则，覆盖文字拼豆、项目存档、色卡切换、工具箱全部画笔橡皮吸管替换、历史回退、统计预警与多格式导出；
+3. **数据一致性闭环**：内存对象 -> UI 渲染 -> 状态持久化 -> 导出图纸，四端数据必须 100% 吻合。
 
 ---
 
 ## 2. 第一维：静态测试规范 (Static Analysis Specification)
 
 ### 2.1 审查目标与门禁标准
-1. **编译器零 Warning 门禁**：Kotlin 编译阶段严禁存在废弃 API 引用（如 Compose 弃用图标）或未处理类型转换；
-2. **Android Lint 门禁**：
-   - `Error`（严重缺陷）：0 个；
-   - `Correctness`（正确性）：检查空指针保护、资源引用有效性；
-   - `Performance`（性能）：检查内存分配、大对象避免在绘制阶段创建；
-   - `Security`（安全性）：SharedPreferences 权限模式、外部存储导出安全作用域（MediaStore）；
-3. **人工代码走查重点**：
-   - **除以零与越界**：网格采样缩放 `imgWidth / n`，当 `n <= 0` 或 `imgWidth <= 0` 时的边界防御；
-   - **大位图内存预算**：`Exporter.renderPatternBitmap` 中网格尺寸 $\ge 200 \times 200$ 时是否按预算压缩 `cellSize`；
-   - **协程并发安全性**：ViewModel 中的 `cells` 数组深拷贝与 `gridVersion` 自增在 `Dispatchers.Default` 与 UI 线程间的同步一致性。
+1. **编译器零 Warning 门禁**：Kotlin 编译严禁废弃 API 警告；
+2. **Android Lint 门禁**：0 Lint Errors，重点扫描 `Correctness`、`Performance` 与 `Security`；
+3. **关键源码人工走查项**：
+   - **`ColorSubstitution.kt`**：
+     - 当库存色板为空或全缺货时，返回 `null`，严禁抛出 `NoSuchElementException`；
+     - `deltaE` 计算在完全相同颜色时为 0.0，浮点截断不能产生负数或 NaN；
+   - **`InventoryStore.kt`**：
+     - 使用 `apply()` 或原子单次写入代替循环写，严禁 SharedPreferences 频繁提交造成磁盘 I/O 卡死；
+   - **`BoardSlicing.kt`**：
+     - 网格尺寸不整除 29×29 时（如 50×112），边缘子板的行列跨度边界截断防护；
+   - **`Exporter.kt`**：
+     - 自适应统计表网格列数根据图纸宽度动态分列，避免除以零或单行超出物理画布；
+   - **`AppViewModel.kt`**：
+     - Compose 状态（`mutableStateOf`）必须在主线程更新，大计算量（像素化、平替搜索）必须切至 `Dispatchers.Default`。
 
 ---
 
-## 3. 第二维：白盒运行态测试规范 (White-Box Code Testing Specification)
+## 3. 第二维：白盒运行态测试规范 (White-Box Unit Testing Specification)
 
-### 3.1 覆盖域划分
-| 模块 | 核心类 | 重点覆盖分支与边界条件 |
-| :--- | :--- | :--- |
-| **色彩计算** | `ColorMath.kt` | sRGB去伽马边界（0, 255）、Oklab单调性、空候选色板回退 `ERR` |
-| **受控色数** | `ColorQuantizer.kt` | 候选色少于上限（不切割直接返回）、色板仅1色、大面积单色中极小面积特征保护 |
-| **噪点清理** | `IslandCleanup.kt` | 1×1孤立单点消除、对角线端点保留、封闭矩形边框保留、棋盘格密集噪点平滑 |
-| **误差扩散** | `Pixelation.kt` | 误差累积截断至 [0, 255]、透明像素不扩散误差、无随机数确定性验证 |
-| **分板跟做** | `BoardSlicing.kt` | 奇偶数边界板切片、全局平坦索引区间编解码压缩、已完成状态切换 |
-| **状态回退** | `AppViewModel.kt` | 历史栈满50步FIFO丢弃、重做栈在执行新操作时清空、连续双指缩放不误触撤回栈 |
-
-### 3.2 判定基准
-- 单测执行命令：`.\gradlew.bat testDebugUnitTest`；
-- 所有用例通过率必须达到 **100% (0 Failure, 0 Error)**。
+### 3.1 覆盖类与用例设计矩阵
+| 模块 | 核心类 | 测试用例与边界覆盖 | 期望结果 |
+| :--- | :--- | :--- | :--- |
+| **品牌色板仓库** | `PaletteRepository` | `testBrandAssetsLoading`: 载入全部 6 种品牌 JSON | 数据完整、RGB/HEX 格式合规、无 BOM、色号唯一 |
+| **豆仓持久化** | `InventoryStore` | `testBrandIsolation`: 切换品牌时的库存隔离性 | Brand A 的缺货状态不污染 Brand B |
+| **智能平替算法** | `ColorSubstitution` | `testExactMatchZeroDeltaE`: 相同颜色平替<br>`testStarRatings`: 5/4/3/2星阈值划分<br>`testSubstituteInCells`: 方形与圆形网格批量替换 | $\Delta E = 0.0$；五星评级精确符合色差区间；被替换色数量准确，未涉及色不受影响 |
+| **孤立飞点平滑** | `IslandCleanup` | `testIsolatedPixelRemoval`: 1×1 噪点平滑<br>`testLineProtection`: 连续 2 像素线条保护 | 孤立杂色消除；轮廓细线 100% 保持连通 |
+| **分板切片** | `BoardSlicing` | `testIrregularSlicing`: 50×112 异形尺寸切片 | 生成正确的子板数量与局部坐标，无越界 |
+| **导出自适应布局** | `Exporter` | `testAdaptiveColumnsCalculation`: 极小宽(20)、中等宽(50)、超大宽(120) | 自动计算适宜列数 (3~8列)，无布局溢出 |
 
 ---
 
-## 4. 第三维：ADB 设备自动化功能测试规范 (Functional & ADB Automation)
+## 4. 第三维：物理真机全功能 ADB 自动化遍历测试规范
 
-### 4.1 测试脚本驱动流程 (`scripts/run_adb_functional_tests.ps1`)
-1. **环境准备与唤醒**：检测 `adb devices`，点亮屏幕并模拟解锁；
-2. **应用启动与前台确认**：启动 `MainActivity`，确认 PID 存活并记录基础内存消耗；
-3. **参数设置操作流**：
-   - 模拟点击粒度滑块调整；
-   - 切换像素化模式（卡通/真实）；
-   - 切换色数控制 Chip（16色 / 24色 / 32色）；
-   - 切换自动清理孤立飞点 Switch 开关；
-4. **生成与画布交互流**：
-   - 点击「生成图纸」；
-   - 触发「去背景」、「清理飞点」并读取 Toast 提示文本；
-   - 触发「撤回」与「重做」并校验图纸一致性；
-5. **分板跟做操作流**：
-   - 点击「分板跟做」，进入分板页面；
-   - 验证屏幕常亮标志 `FLAG_KEEP_SCREEN_ON`；
-   - 模拟点击色号卡片触发 Spotlight 高亮，模拟点击格子记录进度；
-6. **导出与文件落盘校验**：
-   - 触发「导出 PNG 图纸」；
-   - 触发「导出 PDF 图纸」；
-   - 通过 `adb shell ls -l` 检验 `/sdcard/Pictures/PerlerBeads/` 与下载目录，确认文件物理存在且大小符合预期（PNG > 50KB, PDF > 20KB）；
-7. **稳定性与异常监控**：
-   - 抓取全过程 `adb logcat -d`，过滤 `AndroidRuntime:E`, `FATAL EXCEPTION`, `OutOfMemoryError`，必须为 0 报错；
-   - 采集各主要界面截图存入 `docs/screenshots/`。
+必须覆盖如下操作并采集全流程截屏：
+
+### 4.1 首页与入口模块 (HomeScreen)
+- [x] **TC_HOME_01**: 冷启动渲染，4 大核心卡片可见；
+- [x] **TC_HOME_02**: 点击「文字拼豆」卡片，进入文字拼豆生成器，输入文字、调节字号，生成图纸进入编辑器；
+- [x] **TC_HOME_03**: 点击「我的项目」卡片，查看历史项目列表，点击加载已有项目；
+- [x] **TC_HOME_04**: 点击「导入图纸 CSV」卡片，调用文件选择器；
+- [x] **TC_HOME_05**: 点击「导入图片或拍照」大卡片，呼起 Android 14 系统照片选择器。
+
+### 4.2 裁剪与定位模块 (CropScreen)
+- [x] **TC_CROP_01**: 自由移动与缩放裁剪框；
+- [x] **TC_CROP_02**: 双击复位；
+- [x] **TC_CROP_03**: 点击「确定裁剪」进入参数设置页。
+
+### 4.3 像素化参数设置模块 (SettingsScreen)
+- [x] **TC_SET_01**: 横向格子数滑块拖拽调节（10 ~ 150）；
+- [x] **TC_SET_02**: 像素化模式切换（卡通主色 / 真实平均）；
+- [x] **TC_SET_03**: 抖动过渡开关切换；
+- [x] **TC_SET_04**: 色数控制 Chip 轮流选中（不限制、16色、24色、32色、48色）；
+- [x] **TC_SET_05**: 自动清理孤立飞点开关切换；
+- [x] **TC_SET_06**: 画板形状切换（方形 / 圆形，圆形下调节覆盖范围滑块）；
+- [x] **TC_SET_07**: 品牌色板轮流选择（Mard 291、Artkal S 199、Artkal C 174、Artkal A 145、Perler 103、Hama Midi 92）；
+- [x] **TC_SET_08**: 色号系统轮流切换（MARD、COCO、漫漫、盼盼、咪小窝）；
+- [x] **TC_SET_09**: 零缺料模式开关（只用豆仓库存颜色生成）开启与关闭；
+- [x] **TC_SET_10**: 点击「管理色板与豆仓」进入综合管理页；
+- [x] **TC_SET_11**: 点击大橙色按钮「生成图纸」。
+
+### 4.4 色板与豆仓综合管理模块 (PaletteManagerScreen)
+- [x] **TC_PAL_01**: 顶栏品牌横向滚动与多品牌切换；
+- [x] **TC_PAL_02**: 「活动色板」与「我的豆仓」双 Tab 切换；
+- [x] **TC_PAL_03**: 搜索框输入色号/色名模糊过滤；
+- [x] **TC_PAL_04**: 颜色分类折叠面板收起与展开；
+- [x] **TC_PAL_05**: 点击「全选入库」与「清空库存」；
+- [x] **TC_PAL_06**: 单色复选框点击，取消勾选标记缺货；
+- [x] **TC_PAL_07**: 点击顶栏「保存并应用」原子提交；
+- [x] **TC_PAL_08**: 点击「返回」不保存退出。
+
+### 4.5 编辑器工作台微操作全覆盖 (EditorScreen)
+- [x] **TC_ED_01**: 画布双指缩放、拖拽平移与单指绘制；
+- [x] **TC_ED_02**: 顶栏「复位视图」居中充满画布；
+- [x] **TC_ED_03**: 底栏「画笔」工具：选择色板颜色，单点击绘制单格；
+- [x] **TC_ED_04**: 底栏「橡皮」工具：点击画布格子擦除为透明；
+- [x] **TC_ED_05**: 底栏「擦除/吸管」工具：点击网格格子精准吸取对应色号并自动置为当前画笔；
+- [x] **TC_ED_06**: 底栏「替换」工具：选择源色与目标色，全图批量替换；
+- [x] **TC_ED_07**: 底栏「去背景」工具：从边缘漫水填充清除纯白/纯色背景；
+- [x] **TC_ED_08**: 底栏「清理飞点」工具：手动执行孤立飞点平滑消减；
+- [x] **TC_ED_09**: 历史操作：点击「撤回」(Undo) 与「重做」(Redo)；
+- [x] **TC_ED_10**: 顶栏「拼板切片」：弹出 29×29 标准九宫格拼板切片弹窗，切换子板；
+- [x] **TC_ED_11**: 顶栏「原图对比」：点击查看与原始照片的半透明对比；
+- [x] **TC_ED_12**: 顶栏「保存项目」：弹出项目名称对话框，输入名称保存入库；
+- [x] **TC_ED_13**: 顶栏「统计」：打开底部统计抽屉，高亮黄色告警「⚠️ 缺料 X 种」；
+- [x] **TC_ED_14**: 智能平替流：在缺料项点击「平替」-> 弹出 `SubstitutionDialog`（展示原色、平替色、五星匹配度、Oklab 色差 $\Delta E$） -> 点击「一键平替」生效 -> Toast 提示 -> 缺料消除；
+- [x] **TC_ED_15**: 顶栏「导出」：打开导出格式弹窗，分别导出：
+  - 带 Key 图纸 PNG（自适应多列统计网格排版落盘验证）；
+  - 图纸 PDF (1:1 打印 · 2.6mm 迷你豆 / 5.0mm 标准豆)；
+  - 颜色统计图 PNG；
+  - 采购清单 CSV；
+  - 图纸 CSV；
+  - 镜像开关与隐藏白色色号开关。
 
 ---
 
-## 5. 第四维：算法效果与典型素材基准测试规范 (Algorithm Benchmark Specification)
+## 5. 第四维：算法效果与典型素材对标评测规范
 
-### 5.1 基准素材集设计 (Ground-Truth Benchmark Dataset)
-为彻底避免“凭空瞎编”，测试选取市面成熟拼豆与像素艺术界公认的 4 种典型图案结构：
+### 5.1 四类典型素材基准集
+1. **二次元 / 像素风动漫角色 (Chibi / Pixel Art)**：
+   - 目标：纯色大色块、1 像素清晰轮廓线；
+   - 重点评测：卡通主色提取纯净度、轮廓线保护、无噪点。
+2. **真实人像 / 宠物照片 (Real Photo / Portrait)**：
+   - 目标：丰富肤色渐变、明暗光影；
+   - 重点评测：Floyd-Steinberg 抖动自然度、色调连续性。
+3. **多色块风景插画 (Landscape)**：
+   - 目标：大场景、复杂色调；
+   - 重点评测：色数控制（16/24/32色）下的视觉主体保真度。
+4. **圆形拼豆杯垫 (Round Coaster)**：
+   - 目标：圆形画板几何；
+   - 重点评测：圆形遮罩之外网格正确剔除、圆弧边界平滑度。
 
-1. **8-bit / 16-bit 像素艺术图 (Pixel Sprite - Mario / Pokemon)**：
-   - 特征：清晰色块、1像素宽黑色轮廓线、色彩数量较少；
-   - 检验重点：外轮廓连续性是否被噪点清理算法破坏？色数上限是否能精准捕捉主体基色？
-2. **多阶过渡渐变插画 (Smooth Gradient Illustration)**：
-   - 特征：大面积光影渐变；
-   - 检验重点：Floyd-Steinberg 抖动在有限色板下的过渡自然度、是否有横向色带撕裂？
-3. **高反差微小细节图 (Small Feature Facial Detail)**：
-   - 特征：大面积白底/肤色，但带有仅占 0.5% 面积的高饱和红唇、深蓝瞳孔；
-   - 检验重点：在限制 16 色时，中位切割是否能在 Oklab 色度轴上把红唇作为独立箱体保留？
-4. **人工合成椒盐噪声与棋盘测试图 (Synthetic Speckle & Diagonal Test)**：
-   - 特征：已知位置注入 1 格离散噪点 + 对角线连续单像素线条；
-   - 检验重点：定量计算飞点消除率与对角线条豁免率。
-
-### 5.2 算法指标公式与阈值
-1. **色数合规度**：
-   $$\text{Compliance} = \mathbb{I}(\text{DistinctColors} \le \text{MaxColorsBudget}) = 100\%$$
-2. **飞点消除率 (Speckle Removal Rate)**：
-   $$\text{SRR} = \frac{\text{消除的孤立噪点数}}{\text{总孤立噪点数}} \ge 85\%$$
-3. **细线保留率 (Line Preservation Rate)**：
-   $$\text{LPR} = \frac{\text{保留的连续线像素数}}{\text{原始连续线像素数}} = 100\%$$
-4. **峰值信噪比 (PSNR)**：
-   $$\text{PSNR} = 10 \cdot \log_{10}\left(\frac{MAX_I^2}{MSE}\right) \ge 25\text{ dB}$$
-
----
-
-## 6. 第五维：多品牌官方色板、豆仓库存与 Oklab 智能平替测试规范 (Stage 3 Specification)
-
-### 6.1 权威数据源对齐与零捏造标准 (Authoritative Palette Alignment)
-1. **数据源咬合**：
-   - 国际主流品牌（Artkal、Perler、Hama）严格对齐 GitHub 权威拼豆开源库 [`maxcleme/beadcolors`](https://github.com/maxcleme/beadcolors)；
-   - 国内通用体系严格对齐拼豆流行格式转换工具 [`GarrusHuang/pindou-format-tool`](https://github.com/GarrusHuang/pindou-format-tool) 的 Mard 291 色及五大店家映射；
-   - 严禁任何算法或开发人员自行编造虚构色号或 RGB 估算值。
-2. **多品牌资产库容量**：
-   - `Artkal S` (5.0mm 软豆)：官方权威 199 色；
-   - `Artkal C` (2.6mm 硬豆)：官方权威 174 色；
-   - `Artkal A` (2.6mm 软豆)：官方权威 145 色；
-   - `Perler` (5.0mm 标准豆)：官方权威 103 色；
-   - `Hama Midi` (5.0mm 中豆)：官方权威 92 色；
-   - `Domestic Mard` (2.6/5.0mm 五大家族映射)：291 色（MARD / COCO / 漫漫 / 盼盼 / 咪小窝）。
-
-### 6.2 豆仓库存隔离与持久化规范 (Inventory Store Specification)
-1. **品牌隔离性**：用户在 Artkal S 中拥有的颜色与在 Perler 中拥有的颜色互不干扰，在本地 `SharedPreferences` 中通过 `stock_{brandId}` 独立存储 JSON 映射；
-2. **初始化默认状态**：若用户未针对该品牌自定义过库存（`configured_{brandId} == false`），默认判定全量拥有（100% 可用），避免首次进入全部报缺；
-3. **原子批量写入**：用户在 UI 执行全选/清空/批量修改时，必须通过 `saveAllStock` 一次性提交原子写入，杜绝循环单点 `apply()` 导致 I/O 堵塞；
-4. **零缺料模式 (Zero-Shortage Generation)**：开启「只用豆仓库存颜色生成」选项后，像素化算法的候选色板自动过滤为仅包含已入库现货颜色，100% 杜绝生成含缺料图纸。
-
-### 6.3 Oklab 智能平替推荐算法规范 (Oklab Smart Substitution Specification)
-1. **色差计算模型**：
-   平替推荐算法必须在均匀感知的 Oklab 色彩空间下执行欧氏距离计算：
-   $$\Delta E_{ok}(C_1, C_2) = \sqrt{(L_1 - L_2)^2 + (a_1 - a_2)^2 + (b_1 - b_2)^2} \times 100$$
-2. **星级匹配度分级准则**：
-   | 色差阈值 $\Delta E_{ok}$ | 星级评定 | 语义标签 | 视觉说明 |
-   | :--- | :---: | :---: | :--- |
-   | $\le 5.0$ | ★★★★★ | 极佳平替 | 肉眼几乎不可辨别差异，替代后几乎不影响成品质感 |
-   | $\le 10.0$ | ★★★★☆ | 推荐平替 | 极轻微色调差，不仔细对比难以察觉 |
-   | $\le 18.0$ | ★★★☆☆ | 可用平替 | 有一定色差，但在无现货时可应急替代 |
-   | $> 18.0$ | ★★☆☆☆ | 偏色较大 | 色差显著，弹窗将给予用户醒目偏色告警 |
-3. **批量替换与撤销一致性**：
-   - 执行「一键平替」时，必须将图纸中所有使用原缺料颜色的网格像素一次性平替为推荐色；
-   - 必须保留圆形画板几何遮罩与外部擦除标记（`isExternal`），禁止污染透明通道；
-   - 平替操作前必须调用 `saveSnapshot()` 压入历史栈，保证用户随时可以通过编辑页的「撤回」按钮无损回滚。
-
+### 5.2 算法指标量化公式
+1. **Oklab 色差**：
+   $$\Delta E_{ok} = \sqrt{(\Delta L)^2 + (\Delta a)^2 + (\Delta b)^2}$$
+2. **孤立飞点残留率 (Stray Pixel Ratio)**：
+   $$R_{stray} = \frac{\sum [C(x,y) \neq C(\text{8-neighbors})]}{N \times M} \times 100\%$$
+3. **拼豆可制作性评分 (Craftability Score)**：
+   综合颜色种数、单色连续成块率、采购成本折算后的 0~100 分综合可拼性。
