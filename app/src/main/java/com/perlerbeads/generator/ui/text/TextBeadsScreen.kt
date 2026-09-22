@@ -49,9 +49,8 @@ import com.perlerbeads.generator.ui.editor.AppViewModel
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TextBeadsScreen(vm: AppViewModel) {
-    var text by remember { mutableStateOf("") }
-    var rows by remember { mutableIntStateOf(32) }
-    var chosen by remember { mutableStateOf(vm.activePalette.firstOrNull()) }
+    // 输入状态存 VM：返回后再进不丢失
+    val chosen = vm.textBeadColor ?: vm.activePalette.firstOrNull()
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -67,8 +66,8 @@ fun TextBeadsScreen(vm: AppViewModel) {
                 .padding(20.dp)
         ) {
             OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
+                value = vm.textBeadText,
+                onValueChange = { vm.textBeadText = it },
                 label = { Text("文字内容") },
                 placeholder = { Text("例如：生日快乐") },
                 singleLine = true,
@@ -81,8 +80,8 @@ fun TextBeadsScreen(vm: AppViewModel) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(24, 32, 50, 72).forEach { size ->
                     FilterChip(
-                        selected = rows == size,
-                        onClick = { rows = size },
+                        selected = vm.textBeadRows == size,
+                        onClick = { vm.textBeadRows = size },
                         label = { Text("$size 行") }
                     )
                 }
@@ -96,14 +95,29 @@ fun TextBeadsScreen(vm: AppViewModel) {
                     ColorSwatchBig(
                         pc = pc,
                         selected = chosen?.hex == pc.hex,
-                        onClick = { chosen = pc }
+                        onClick = { vm.textBeadColor = pc }
                     )
                 }
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(20.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = vm.textBeadBgWhite,
+                    onClick = { vm.textBeadBgWhite = !vm.textBeadBgWhite },
+                    label = { Text("背景填白") }
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (vm.textBeadBgWhite) "背景用色板中最白的色铺满" else "背景透明（只拼笔画）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(Modifier.height(28.dp))
             Button(
-                onClick = { vm.generateTextBeads(text, rows, chosen) },
+                onClick = { vm.generateTextBeads() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
@@ -112,7 +126,7 @@ fun TextBeadsScreen(vm: AppViewModel) {
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "生成后可直接导出，也可在编辑器继续调整；背景为透明，只拼笔画部分",
+                "生成后可在编辑器继续调整或导出；行数、文字重进页面仍会保留",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

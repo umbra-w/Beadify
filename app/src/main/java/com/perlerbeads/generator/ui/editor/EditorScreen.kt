@@ -1,6 +1,7 @@
 package com.perlerbeads.generator.ui.editor
 
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -204,9 +205,15 @@ fun EditorScreen(vm: AppViewModel) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             TopAppBar(
-                title = { Text("图纸 ${grid.n}×${grid.m}") },
+                title = {
+                    // 长尺寸标题缩小一号，避免顶栏截断
+                    Text("图纸 ${grid.n}×${grid.m}", style = MaterialTheme.typography.titleSmall)
+                },
                 navigationIcon = {
-                    TextButton(onClick = { vm.navigate(Screen.Settings) }) { Text("返回") }
+                    // 无源图（文字拼豆/打开的项目）时返回首页，避免进入空白裁剪页
+                    TextButton(onClick = {
+                        if (vm.bitmap != null) vm.navigate(Screen.Settings) else vm.navigate(Screen.Home)
+                    }) { Text("返回") }
                 },
                 actions = {
                     IconButton(onClick = { vm.enterBoardWork() }) {
@@ -647,20 +654,33 @@ fun EditorScreen(vm: AppViewModel) {
     if (showExport) {
         ExportDialog(
             onDismiss = { showExport = false },
-            onPattern = { hideWhite, mirror ->
+            onPattern = { hideWhite, mirror, attachStats ->
                 showExport = false
                 val bmp = runCatching {
-                    // 分辨率预算：整图 ≤ 2000 万像素（≈80MB），单格 16~48px；
-                    // 网页版同尺寸下每格 30px，此处 90×135 图可达 40px/格，文字更清晰
-                    val cellByArea = kotlin.math.sqrt(20_000_000f / (grid.n * grid.m)).toInt()
-                    val gridCell = cellByArea.coerceIn(16, 48)
+                    // 分辨率预算：整图 ≤ 3600 万像素（网页版无上限，此处兼顾内存），
+                    // 90×135 图约 54px/格（网页版 30px），叠加加粗对比色文字，清晰度对齐
+                    val cellByArea = kotlin.math.sqrt(36_000_000f / (grid.n * grid.m)).toInt()
+                    val gridCell = cellByArea.coerceIn(16, 64)
                     val circleCell = vm.circleFrame?.let { (4096f / (2f * it.radius)).toInt() } ?: Int.MAX_VALUE
-                    val cell = maxOf(4, minOf(48, minOf(gridCell, circleCell)))
-                    GridRenderer.render(
+                    val cell = maxOf(4, minOf(64, minOf(gridCell, circleCell)))
+                    val pattern = GridRenderer.render(
                         grid, cell, showBorders = true, showKeys = true,
                         hideWhiteKeys = hideWhite, mirror = mirror,
                         circle = vm.circleFrame
+                    ) ?: return@runCatching null
+                    if (!attachStats) return@runCatching pattern
+                    // 统计表拼接在图纸下方（同宽），对齐网页版「图+统计一起出」的习惯
+                    val statsBmp = Exporter.renderStatsBitmap(statsRows(vm), vm.totalBeadCount, width = pattern.width)
+                    val combined = Bitmap.createBitmap(
+                        pattern.width, pattern.height + statsBmp.height, Bitmap.Config.ARGB_8888
                     )
+                    val canvas = android.graphics.Canvas(combined)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    canvas.drawBitmap(pattern, 0f, 0f, null)
+                    canvas.drawBitmap(statsBmp, 0f, pattern.height.toFloat(), null)
+                    statsBmp.recycle()
+                    pattern.recycle()
+                    combined
                 }.getOrNull()
                 if (bmp != null) {
                     val uri = Exporter.savePngToPictures(context, bmp, "拼豆图纸_${grid.n}x${grid.m}.png")
@@ -975,13 +995,14 @@ private fun StatsPanel(vm: AppViewModel) {
 @Composable
 private fun ExportDialog(
     onDismiss: () -> Unit,
-    onPattern: (hideWhite: Boolean, mirror: Boolean) -> Unit,
+    onPattern: (hideWhite: Boolean, mirror: Boolean, attachStats: Boolean) -> Unit,
     onPdf: (hideWhite: Boolean, mirror: Boolean) -> Unit,
     onStats: () -> Unit,
     onList: () -> Unit
 ) {
     var hideWhite by remember { mutableStateOf(true) }
     var mirror by remember { mutableStateOf(false) }
+    var attachStats by remember { mutableStateOf(true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -990,7 +1011,7 @@ private fun ExportDialog(
             Column {
                 FilterChip(
                     selected = false,
-                    onClick = { onPattern(hideWhite, mirror) },
+                    onClick = { onPattern(hideWhite, mirror, attachStats) },
                     label = { Text("带 Key 图纸 PNG") }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -999,16 +1020,15 @@ private fun ExportDialog(
                     onClick = { onPdf(hideWhite, mirror) },
                     label = { Text("图纸 PDF（1:1 打印）") }
                 )
-                Text(
-                    "勾选下方选项后点击上面按钮生效",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
                 Spacer(Modifier.height(8.dp))
                 FilterChip(selected = false, onClick = onStats, label = { Text("颜色统计图 PNG") })
                 Spacer(Modifier.height(8.dp))
                 FilterChip(selected = false, onClick = onList, label = { Text("采购清单 CSV") })
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = attachStats, onCheckedChange = { attachStats = it })
+                    Text("附颜色统计表（拼接在图纸下方）", style = MaterialTheme.typography.bodySmall)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = hideWhite, onCheckedChange = { hideWhite = it })
                     Text("隐藏白色格子色号", style = MaterialTheme.typography.bodySmall)

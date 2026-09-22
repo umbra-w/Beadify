@@ -54,7 +54,10 @@ fun SettingsScreen(vm: AppViewModel) {
         TopAppBar(
             title = { Text("像素化设置") },
             navigationIcon = {
-                TextButton(onClick = { vm.navigate(Screen.Crop) }) { Text("返回") }
+                // 无源图（文字拼豆/打开的项目）时返回首页，避免进入空白裁剪页
+                TextButton(onClick = {
+                    if (vm.bitmap != null) vm.navigate(Screen.Crop) else vm.navigate(Screen.Home)
+                }) { Text("返回") }
             }
         )
         Column(

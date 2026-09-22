@@ -30,8 +30,14 @@ class MainActivity : ComponentActivity() {
             PerlerBeadsTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     // 系统返回键 / 左滑手势 → 返回上一功能页
+                    // 无源图（文字拼豆/打开的项目）时跳过裁剪/设置链，直接回首页
                     BackHandler(vm.screen != Screen.Home) {
-                        vm.screen.back()?.let { vm.navigate(it) }
+                        val target = when (vm.screen) {
+                            Screen.Editor -> if (vm.bitmap != null) Screen.Settings else Screen.Home
+                            Screen.Settings -> if (vm.bitmap != null) Screen.Crop else Screen.Home
+                            else -> vm.screen.back()
+                        }
+                        target?.let { vm.navigate(it) }
                     }
 
                     when (vm.screen) {

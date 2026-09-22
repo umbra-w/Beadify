@@ -26,61 +26,68 @@ data class ColorStatRow(
 /** 图纸 / 统计 / 清单导出。 */
 object Exporter {
 
-    /** 生成颜色统计 PNG：色块 + 色号 + 数量，按数量降序。 */
-    fun renderStatsBitmap(rows: List<ColorStatRow>, totalCount: Int): Bitmap {
-        val rowHeight = 64
-        val margin = 24
-        val headerHeight = 96
-        val width = 480
-        val height = headerHeight + rows.size * rowHeight + 80
+    /**
+     * 生成颜色统计 PNG：色块 + 色号 + 数量，按数量降序。
+     * @param width 输出宽度；拼接到大图下方时传与大图一致的宽度，内部按比例缩放字号
+     */
+    fun renderStatsBitmap(rows: List<ColorStatRow>, totalCount: Int, width: Int = 480): Bitmap {
+        val scale = width / 480f
+        val rowHeight = (64 * scale).toInt().coerceAtLeast(24)
+        val margin = (24 * scale).toInt()
+        val headerHeight = (96 * scale).toInt()
+        val titleSize = 40f * scale
+        val rowTextSize = 36f * scale
+        val swatchSize = (48 * scale).toInt()
+        val height = headerHeight + rows.size * rowHeight + (80 * scale).toInt()
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(Color.WHITE)
 
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 40f
+            textSize = titleSize
             isFakeBoldText = true
         }
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 36f
+            textSize = rowTextSize
         }
         val swatchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.LTGRAY
             style = Paint.Style.STROKE
-            strokeWidth = 2f
+            strokeWidth = 2f * scale
         }
 
-        canvas.drawText("拼豆颜色统计（共 $totalCount 粒）", margin.toFloat(), 60f, titlePaint)
+        canvas.drawText("拼豆颜色统计（共 $totalCount 粒）", margin.toFloat(), (60 * scale), titlePaint)
 
         rows.forEachIndexed { index, row ->
             val y = headerHeight + index * rowHeight
             val swatchLeft = margin
-            val swatchTop = y + 8
+            val swatchTop = y + (8 * scale).toInt()
             swatchPaint.color = GridRenderer.parseHex(row.hex)
             canvas.drawRect(
                 swatchLeft.toFloat(), swatchTop.toFloat(),
-                (swatchLeft + 48).toFloat(), (swatchTop + 48).toFloat(),
+                (swatchLeft + swatchSize).toFloat(), (swatchTop + swatchSize).toFloat(),
                 swatchPaint
             )
             canvas.drawRect(
                 swatchLeft.toFloat(), swatchTop.toFloat(),
-                (swatchLeft + 48).toFloat(), (swatchTop + 48).toFloat(),
+                (swatchLeft + swatchSize).toFloat(), (swatchTop + swatchSize).toFloat(),
                 borderPaint
             )
-            canvas.drawText("${row.key}  ${row.hex}", (swatchLeft + 64).toFloat(), y + 42f, textPaint)
+            canvas.drawText("${row.key}  ${row.hex}", (swatchLeft + swatchSize + 16 * scale), y + rowHeight * 0.66f, textPaint)
             val countText = "${row.count}"
-            canvas.drawText(countText, (width - margin - textPaint.measureText(countText)).toFloat(), y + 42f, textPaint)
+            canvas.drawText(countText, (width - margin - textPaint.measureText(countText)), y + rowHeight * 0.66f, textPaint)
         }
 
         val bottomText = "由拼豆图纸生成器导出"
+        val smallPaint = Paint(textPaint).apply { textSize = 26f * scale; color = Color.GRAY }
         canvas.drawText(
             bottomText,
-            (width - margin - textPaint.measureText(bottomText)).toFloat(),
-            (height - 40).toFloat(),
-            textPaint.apply { textSize = 26f; color = Color.GRAY }
+            (width - margin - smallPaint.measureText(bottomText)),
+            (height - 40 * scale),
+            smallPaint
         )
         return bmp
     }

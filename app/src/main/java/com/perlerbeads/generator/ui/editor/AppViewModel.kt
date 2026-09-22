@@ -606,20 +606,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 文字拼豆 ----------
 
-    /** 由文字直接生成网格（笔画用所选颜色，背景透明），成功后进入编辑器。 */
-    fun generateTextBeads(text: String, gridRows: Int, color: PaletteColor?) {
-        val c = color ?: activePalette.firstOrNull() ?: run {
+    // 输入状态放 VM，重进页面不丢失
+    var textBeadText by mutableStateOf("")
+    var textBeadRows by mutableIntStateOf(32)
+    var textBeadBgWhite by mutableStateOf(false)
+    var textBeadColor by mutableStateOf<PaletteColor?>(null)
+
+    /** 由文字直接生成网格（笔画用所选颜色，背景透明或填白），成功后进入编辑器。 */
+    fun generateTextBeads() {
+        val c = textBeadColor ?: activePalette.firstOrNull() ?: run {
             toast = "当前色板为空，请先在色板设置中选择颜色"
             return
         }
-        if (text.isBlank()) {
+        if (textBeadText.isBlank()) {
             toast = "请输入文字"
             return
         }
+        // 背景填白：从当前色板里找最接近纯白的颜色
+        val bg = if (textBeadBgWhite) {
+            activePalette.minByOrNull {
+                val r = hexToRgb(it.hex)?.r ?: 255
+                val g2 = hexToRgb(it.hex)?.g ?: 255
+                val b = hexToRgb(it.hex)?.b ?: 255
+                (255 - r) * (255 - r) + (255 - g2) * (255 - g2) + (255 - b) * (255 - b)
+            }
+        } else null
         processing = true
         viewModelScope.launch {
             val result = withContext(Dispatchers.Default) {
-                com.perlerbeads.generator.algorithm.TextBeads.renderTextGrid(text, gridRows, c)
+                com.perlerbeads.generator.algorithm.TextBeads.renderTextGrid(textBeadText, textBeadRows, c, true, bg)
             }
             processing = false
             if (result == null) {

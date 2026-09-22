@@ -160,6 +160,21 @@ object GridRenderer {
             }
         }
 
+        // 每 10 格一条加粗计数线，便于数格子（圆形模式随圆裁剪）
+        if (showBorders) {
+            val boldLine = Paint().apply {
+                color = 0xCC333333.toInt()
+                style = Paint.Style.STROKE
+                strokeWidth = maxOf(2f, cellSize * 0.1f)
+            }
+            for (c in 0..grid.n step 10) {
+                drawCanvas.drawLine((c * cellSize).toFloat(), 0f, (c * cellSize).toFloat(), gridH.toFloat(), boldLine)
+            }
+            for (r in 0..grid.m step 10) {
+                drawCanvas.drawLine(0f, (r * cellSize).toFloat(), gridW.toFloat(), (r * cellSize).toFloat(), boldLine)
+            }
+        }
+
         // 圆形裁剪：圆框中心固定在输出画布中心
         if (isCircle && gridBmp != null) {
             val circleCx = outSize / 2f

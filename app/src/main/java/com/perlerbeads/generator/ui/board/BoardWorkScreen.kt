@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -159,8 +158,7 @@ fun BoardWorkScreen(vm: AppViewModel) {
                     contentDescription = "第 ${slice.index + 1} 块板",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(slice.cols.toFloat() / slice.rows.toFloat())
+                        .fillMaxSize()
                         .padding(8.dp)
                 )
             }

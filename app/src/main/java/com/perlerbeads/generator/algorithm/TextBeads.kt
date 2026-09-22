@@ -23,13 +23,15 @@ object TextBeads {
      * 渲染文字为网格。
      * @param text 单行文字（换行/多余空白会被折叠为单个空格）
      * @param gridRows 网格行数（字号高度）；列数按文字宽高比自动推算
+     * @param bg 背景豆颜色；null = 背景透明（只拼笔画）
      * @return 网格，文字过短（无有效笔画）时返回 null
      */
     fun renderTextGrid(
         text: String,
         gridRows: Int,
         bead: PaletteColor,
-        bold: Boolean = true
+        bold: Boolean = true,
+        bg: PaletteColor? = null
     ): GridData? {
         val singleLine = text.replace(Regex("\\s+"), " ").trim()
         if (singleLine.isEmpty()) return null
@@ -61,10 +63,11 @@ object TextBeads {
 
         // 3. 缩放到网格分辨率，按透明度阈值判定笔画
         val scaled = Bitmap.createScaledBitmap(raw, cols, actualRows, true)
+        val bgCell = bg?.let { MappedPixel(it.key, it.hex, false) } ?: transparentColorData
         val cells = Array(actualRows) { r ->
             Array(cols) { c ->
                 val alpha = Color.alpha(scaled.getPixel(c, r))
-                if (alpha >= 100) MappedPixel(bead.key, bead.hex, false) else transparentColorData
+                if (alpha >= 100) MappedPixel(bead.key, bead.hex, false) else bgCell
             }
         }
         scaled.recycle()
