@@ -653,15 +653,16 @@ fun EditorScreen(vm: AppViewModel) {
     // ---------- 导出对话框 ----------
     if (showExport) {
         ExportDialog(
+            initialPitch = vm.settings.pdfBeadPitch,
             onDismiss = { showExport = false },
             onPattern = { hideWhite, mirror, attachStats ->
                 showExport = false
                 // 导出走 VM 后台线程（渲染大图在主线程会卡顿/OOM），完成后 toast 提示
                 vm.exportPatternPng(hideWhite, mirror, attachStats)
             },
-            onPdf = { hideWhite, mirror ->
+            onPdf = { pitch ->
                 showExport = false
-                vm.exportPatternPdf(hideWhite, mirror)
+                vm.exportPatternPdf(pitch)
             },
             onStats = {
                 showExport = false
@@ -948,15 +949,17 @@ private fun StatsPanel(vm: AppViewModel) {
 
 @Composable
 private fun ExportDialog(
+    initialPitch: com.perlerbeads.generator.model.BeadPitch,
     onDismiss: () -> Unit,
     onPattern: (hideWhite: Boolean, mirror: Boolean, attachStats: Boolean) -> Unit,
-    onPdf: (hideWhite: Boolean, mirror: Boolean) -> Unit,
+    onPdf: (pitch: com.perlerbeads.generator.model.BeadPitch) -> Unit,
     onStats: () -> Unit,
     onList: () -> Unit
 ) {
     var hideWhite by remember { mutableStateOf(true) }
     var mirror by remember { mutableStateOf(false) }
     var attachStats by remember { mutableStateOf(true) }
+    var pitch by remember { mutableStateOf(initialPitch) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -971,10 +974,26 @@ private fun ExportDialog(
                 Spacer(Modifier.height(8.dp))
                 FilterChip(
                     selected = false,
-                    onClick = { onPdf(hideWhite, mirror) },
-                    label = { Text("图纸 PDF（1:1 打印）") }
+                    onClick = { onPdf(pitch) },
+                    label = { Text("图纸 PDF（1:1 打印 · ${pitch.label}）") }
                 )
-                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, top = 2.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("打印尺寸:", style = MaterialTheme.typography.labelSmall)
+                    com.perlerbeads.generator.model.BeadPitch.entries.forEach { p ->
+                        FilterChip(
+                            selected = pitch == p,
+                            onClick = { pitch = p },
+                            label = { Text(p.label, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
                 FilterChip(selected = false, onClick = onStats, label = { Text("颜色统计图 PNG") })
                 Spacer(Modifier.height(8.dp))
                 FilterChip(selected = false, onClick = onList, label = { Text("采购清单 CSV") })

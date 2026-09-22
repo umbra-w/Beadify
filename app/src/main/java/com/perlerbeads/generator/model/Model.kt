@@ -29,6 +29,18 @@ enum class GridShape {
     SQUARE, CIRCLE
 }
 
+/** 拼豆实物规格（用于 1:1 实物打印与模板对齐）。 */
+enum class BeadPitch(val mm: Float, val label: String) {
+    MINI_2_6(2.6f, "2.6mm 迷你豆"),
+    STANDARD_5_0(5.0f, "5.0mm 标准豆");
+
+    val cellPt: Float get() = mm * 72f / 25.4f
+
+    companion object {
+        fun fromMm(mm: Float): BeadPitch = if (mm < 3.8f) MINI_2_6 else STANDARD_5_0
+    }
+}
+
 data class RgbColor(val r: Int, val g: Int, val b: Int)
 
 /**

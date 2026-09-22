@@ -747,19 +747,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun exportPatternPdf(hideWhite: Boolean, mirror: Boolean) {
+    fun exportPatternPdf(pitch: com.perlerbeads.generator.model.BeadPitch = settings.pdfBeadPitch) {
         val g = gridData ?: run { toast = "请先生成图纸"; return }
         if (exporting) return
         exporting = true
-        toast = "正在生成 PDF…"
+        settings.pdfBeadPitch = pitch
+        toast = "正在生成 PDF（${pitch.label}）…"
         viewModelScope.launch {
             val app = getApplication<Application>()
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bytes = PdfExporter.buildPatternPdf(
-                        g, circleFrame, statRows(), totalBeadCount
+                        g, circleFrame, statRows(), totalBeadCount, pitch
                     )
-                    Exporter.savePdfToDownloads(app, bytes, "拼豆图纸_${g.n}x${g.m}.pdf")
+                    Exporter.savePdfToDownloads(app, bytes, "拼豆图纸_${g.n}x${g.m}_${pitch.mm}mm.pdf")
                 }
             }
             exporting = false

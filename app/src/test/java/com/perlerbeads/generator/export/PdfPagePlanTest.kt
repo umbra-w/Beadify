@@ -53,4 +53,20 @@ class PdfPagePlanTest {
     fun invalidCapacityRejected() {
         planPdfTiles(10, 10, 0, 50)
     }
+
+    @Test
+    fun beadPitch_capacityCalculation() {
+        val mini = com.perlerbeads.generator.model.BeadPitch.MINI_2_6
+        val std = com.perlerbeads.generator.model.BeadPitch.STANDARD_5_0
+        val (miniCols, miniRows) = PdfExporter.pageCapacity(mini)
+        val (stdCols, stdRows) = PdfExporter.pageCapacity(std)
+
+        // 2.6mm 迷你豆单页格数应显著大于 5.0mm 标准豆
+        org.junit.Assert.assertTrue("2.6mm 单页列数 ($miniCols) 应大于 5.0mm ($stdCols)", miniCols > stdCols)
+        org.junit.Assert.assertTrue("2.6mm 单页行数 ($miniRows) 应大于 5.0mm ($stdRows)", miniRows > stdRows)
+        assertEquals(70, miniCols)
+        assertEquals(95, miniRows)
+        assertEquals(36, stdCols)
+        assertEquals(49, stdRows)
+    }
 }

@@ -153,6 +153,24 @@ class AppRuntimeTest {
     }
 
     @Test
+    fun pdfBytes_supportsBothMiniAndStandardPitch() {
+        val miniBytes = PdfExporter.buildPatternPdf(
+            testGrid(), null,
+            listOf(ColorStatRow("A01", "#FF0000", 24)), 24,
+            com.perlerbeads.generator.model.BeadPitch.MINI_2_6
+        )
+        val stdBytes = PdfExporter.buildPatternPdf(
+            testGrid(), null,
+            listOf(ColorStatRow("A01", "#FF0000", 24)), 24,
+            com.perlerbeads.generator.model.BeadPitch.STANDARD_5_0
+        )
+        assertTrue(miniBytes.size > 1000)
+        assertTrue(stdBytes.size > 1000)
+        assertEquals("%PDF", String(miniBytes.copyOfRange(0, 4), Charsets.US_ASCII))
+        assertEquals("%PDF", String(stdBytes.copyOfRange(0, 4), Charsets.US_ASCII))
+    }
+
+    @Test
     fun circlePatternExport_clipsOutsideCircle() {
         // 圆形画板：圆框外应为 external（渲染为浅灰/白），豆数统计只含圆内
         val grid = GridData(

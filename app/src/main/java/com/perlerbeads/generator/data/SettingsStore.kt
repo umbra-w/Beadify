@@ -70,6 +70,11 @@ class SettingsStore(context: Context) {
         get() = prefs.getInt(KEY_BOARD_SIZE, 29)
         set(v) { prefs.edit().putInt(KEY_BOARD_SIZE, v.coerceIn(8, 96)).apply() }
 
+    /** PDF 导出：拼豆实物规格（2.6mm 迷你豆 / 5.0mm 标准豆），默认 2.6mm。 */
+    var pdfBeadPitch: com.perlerbeads.generator.model.BeadPitch
+        get() = com.perlerbeads.generator.model.BeadPitch.fromMm(prefs.getFloat("pdf_bead_pitch_mm", 2.6f))
+        set(v) { prefs.edit().putFloat("pdf_bead_pitch_mm", v.mm).apply() }
+
     /** 分板跟做：按进度键保存已完成板序号集合。 */
     fun saveBoardProgress(key: String, completed: Set<Int>) {
         prefs.edit().putString(KEY_BOARD_PROGRESS_PREFIX + key, completed.joinToString(",")).apply()
