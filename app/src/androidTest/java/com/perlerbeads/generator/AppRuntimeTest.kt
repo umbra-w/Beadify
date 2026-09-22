@@ -342,5 +342,37 @@ class AppRuntimeTest {
         // 原先 (2, 2) 是孤立白色 P07，清理后应被邻域主色取代
         assertNotEquals("P07", cleaned[2][2].key)
     }
+
+    @Test
+    fun test_generate_fromRealCameraPhoto_doesNotHangOrCrash() {
+        // 构造 3000x4000 (1200万像素) 真实拍摄尺寸位图，模拟相机照片下采样与像素化压力
+        val w = 3000
+        val h = 4000
+        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        val paint = android.graphics.Paint()
+        paint.color = android.graphics.Color.RED
+        canvas.drawRect(0f, 0f, 1500f, 2000f, paint)
+        paint.color = android.graphics.Color.BLUE
+        canvas.drawRect(1500f, 0f, 3000f, 2000f, paint)
+        paint.color = android.graphics.Color.GREEN
+        canvas.drawRect(0f, 2000f, 1500f, 4000f, paint)
+        paint.color = android.graphics.Color.YELLOW
+        canvas.drawRect(1500f, 2000f, 3000f, 4000f, paint)
+
+        val t0 = System.currentTimeMillis()
+        val palette = com.perlerbeads.generator.data.PaletteRepository(context).fullBeadPalette
+        val fallback = palette[0]
+
+        val result = com.perlerbeads.generator.algorithm.calculatePixelGrid(
+            bmp, 50, 67, palette, com.perlerbeads.generator.model.PixelationMode.DOMINANT, fallback,
+            dithering = false, maxColors = 0, cleanupIslands = false
+        )
+        val elapsed = System.currentTimeMillis() - t0
+        println(">>> 3000x4000 (12MP) calculatePixelGrid ELAPSED: ${elapsed}ms")
+        assertNotNull(result)
+        bmp.recycle()
+        assertTrue("生成图纸耗时过长 ($elapsed ms > 2000 ms)", elapsed < 2000)
+    }
 }
 
