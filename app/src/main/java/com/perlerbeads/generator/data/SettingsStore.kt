@@ -58,11 +58,48 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_AI_REQKEY, "image2") ?: "image2"
         set(v) { prefs.edit().putString(KEY_AI_REQKEY, v.trim()).apply() }
 
-    /** 保存色板勾选（hex → 是否选中）。 */
+    /** 拼豆品牌/系列，默认 MARD (国内通用 291色)。 */
+    var beadBrand: com.perlerbeads.generator.model.BeadBrand
+        get() = com.perlerbeads.generator.model.BeadBrand.fromId(prefs.getString(KEY_BEAD_BRAND, "mard") ?: "mard")
+        set(v) { prefs.edit().putString(KEY_BEAD_BRAND, v.id).apply() }
+
+    /** 像素化生成约束：仅使用豆仓已有库存颜色。 */
+    var onlyInStockGeneration: Boolean
+        get() = prefs.getBoolean(KEY_ONLY_IN_STOCK, false)
+        set(v) { prefs.edit().putBoolean(KEY_ONLY_IN_STOCK, v).apply() }
+
+    /** 保存当前品牌色板勾选（hex → 是否选中）。 */
     fun savePaletteSelections(selections: Map<String, Boolean>) {
+        savePaletteSelections(beadBrand, selections)
+    }
+
+    /** 保存指定品牌色板勾选（hex → 是否选中）。 */
+    fun savePaletteSelections(brand: com.perlerbeads.generator.model.BeadBrand, selections: Map<String, Boolean>) {
         val obj = JSONObject()
         selections.forEach { (k, v) -> obj.put(k, v) }
-        prefs.edit().putString(KEY_PALETTE, obj.toString()).apply()
+        val key = if (brand == com.perlerbeads.generator.model.BeadBrand.MARD) KEY_PALETTE else KEY_PALETTE_PREFIX + brand.id
+        prefs.edit().putString(key, obj.toString()).apply()
+    }
+
+    /** 读取当前品牌色板勾选；从未保存过则返回 null（表示全量）。 */
+    fun loadPaletteSelections(): Map<String, Boolean>? = loadPaletteSelections(beadBrand)
+
+    /** 读取指定品牌色板勾选；从未保存过则返回 null（表示全量）。 */
+    fun loadPaletteSelections(brand: com.perlerbeads.generator.model.BeadBrand): Map<String, Boolean>? {
+        val key = if (brand == com.perlerbeads.generator.model.BeadBrand.MARD) KEY_PALETTE else KEY_PALETTE_PREFIX + brand.id
+        val raw = prefs.getString(key, null) ?: return null
+        return try {
+            val obj = JSONObject(raw)
+            val map = HashMap<String, Boolean>()
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                map[k] = obj.getBoolean(k)
+            }
+            map
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** 分板跟做：实体板尺寸（格），默认 29（MARD 大板）。 */
@@ -99,23 +136,6 @@ class SettingsStore(context: Context) {
             com.perlerbeads.generator.algorithm.decodeCellIndices(it)
         } ?: emptySet()
 
-    /** 读取色板勾选；从未保存过则返回 null（表示全量）。 */
-    fun loadPaletteSelections(): Map<String, Boolean>? {
-        val raw = prefs.getString(KEY_PALETTE, null) ?: return null
-        return try {
-            val obj = JSONObject(raw)
-            val map = HashMap<String, Boolean>()
-            val keys = obj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                map[k] = obj.getBoolean(k)
-            }
-            map
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     /** 受控色数上限（0=不限制，16/24/32/48 等）。 */
     var maxColors: Int
         get() = prefs.getInt(KEY_MAX_COLORS, 0)
@@ -128,6 +148,8 @@ class SettingsStore(context: Context) {
 
     companion object {
         private const val KEY_COLOR_SYSTEM = "color_system"
+        private const val KEY_BEAD_BRAND = "bead_brand"
+        private const val KEY_ONLY_IN_STOCK = "only_in_stock_generation"
         private const val KEY_GRANULARITY = "granularity"
         private const val KEY_MODE = "pixelation_mode"
         private const val KEY_SHAPE = "grid_shape"
@@ -135,6 +157,7 @@ class SettingsStore(context: Context) {
         private const val KEY_CIRCLE_X = "circle_offset_x"
         private const val KEY_CIRCLE_Y = "circle_offset_y"
         private const val KEY_PALETTE = "palette_selections"
+        private const val KEY_PALETTE_PREFIX = "palette_selections_"
         private const val KEY_AI_URL = "ai_service_url"
         private const val KEY_AI_REQKEY = "ai_req_key"
         private const val KEY_BOARD_SIZE = "board_size"
