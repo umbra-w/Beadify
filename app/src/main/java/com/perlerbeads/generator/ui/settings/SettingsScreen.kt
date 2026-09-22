@@ -26,6 +26,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +48,7 @@ fun SettingsScreen(vm: AppViewModel) {
     var mode by remember { mutableStateOf(vm.settings.mode) }
     var gridShape by remember { mutableStateOf(vm.settings.gridShape) }
     var dithering by remember { mutableStateOf(vm.settings.dithering) }
-    var maxColors by remember { mutableStateOf(vm.settings.maxColors) }
+    var maxColors by remember { mutableIntStateOf(vm.settings.maxColors) }
     var cleanupIslands by remember { mutableStateOf(vm.settings.cleanupIslands) }
     var circleOffsetX by remember { mutableFloatStateOf(vm.settings.circleOffsetX) }
     var circleOffsetY by remember { mutableFloatStateOf(vm.settings.circleOffsetY) }

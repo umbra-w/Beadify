@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.CenterFocusStrong
@@ -41,10 +43,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Highlight
-import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -522,7 +522,7 @@ fun EditorScreen(vm: AppViewModel) {
                     onClick = { vm.undo() },
                     enabled = vm.canUndo
                 ) {
-                    Icon(Icons.Filled.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(2.dp))
                     Text("撤回")
                 }
@@ -531,7 +531,7 @@ fun EditorScreen(vm: AppViewModel) {
                     onClick = { vm.redo() },
                     enabled = vm.canRedo
                 ) {
-                    Icon(Icons.Filled.Redo, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(2.dp))
                     Text("重做")
                 }

@@ -595,7 +595,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 分板跟做 ----------
 
-    var boardSize by mutableStateOf(settings.boardSize)
+    var boardSize by mutableIntStateOf(settings.boardSize)
         private set
 
     var completedBoards by mutableStateOf<Set<Int>>(emptySet())
@@ -606,7 +606,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var spotlightKey by mutableStateOf<String?>(null)
 
-    var currentBoard by mutableStateOf(0)
+    var currentBoard by mutableIntStateOf(0)
         private set
 
     /** 当前网格的归属判定（圆形画板 = 圆框内），供分板统计使用。 */
