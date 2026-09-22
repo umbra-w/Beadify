@@ -52,7 +52,9 @@ object Exporter {
         )
         if (!attachStats) return pattern
 
-        val statsWidth = minOf(pattern.width, 1600)
+        // 统计表字号与图纸色号同尺度（约 0.75×格宽），宽度自适应并封顶——
+        // 之前按图纸全宽等比放大，大图上文字被放大近 10 倍，观感过大
+        val statsWidth = (cell * 10).coerceIn(480, 1600)
         val statsBmp = renderStatsBitmap(stats, totalCount, width = statsWidth)
         val combined = Bitmap.createBitmap(
             pattern.width, pattern.height + statsBmp.height, Bitmap.Config.ARGB_8888

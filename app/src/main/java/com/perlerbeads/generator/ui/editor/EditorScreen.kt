@@ -655,10 +655,12 @@ fun EditorScreen(vm: AppViewModel) {
         ExportDialog(
             onDismiss = { showExport = false },
             onPattern = { hideWhite, mirror, attachStats ->
+                showExport = false
                 // 导出走 VM 后台线程（渲染大图在主线程会卡顿/OOM），完成后 toast 提示
                 vm.exportPatternPng(hideWhite, mirror, attachStats)
             },
             onPdf = { hideWhite, mirror ->
+                showExport = false
                 vm.exportPatternPdf(hideWhite, mirror)
             },
             onStats = {
