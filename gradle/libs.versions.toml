@@ -20,6 +20,8 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version = "1.2.1" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version = "1.6.2" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

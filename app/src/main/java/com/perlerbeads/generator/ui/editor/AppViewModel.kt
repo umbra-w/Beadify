@@ -28,6 +28,9 @@ import com.perlerbeads.generator.data.PaletteRepository
 import com.perlerbeads.generator.data.ProjectStore
 import com.perlerbeads.generator.data.SavedProject
 import com.perlerbeads.generator.data.SettingsStore
+import com.perlerbeads.generator.export.ColorStatRow
+import com.perlerbeads.generator.export.Exporter
+import com.perlerbeads.generator.export.PdfExporter
 import com.perlerbeads.generator.model.ColorSystem
 import com.perlerbeads.generator.model.CircleGeometry
 import com.perlerbeads.generator.model.GridData
@@ -704,6 +707,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteProject(id: String) {
         projectStore.delete(id)
         refreshProjects()
+    }
+
+    // ---------- 导出（后台线程，避免主线程卡顿；失败必须提示） ----------
+
+    var exporting by mutableStateOf(false)
+        private set
+
+    /** 当前图纸的颜色统计行（导出用）。 */
+    fun statRows(): List<ColorStatRow> {
+        val counts = stats?.counts ?: return emptyList()
+        return gridPalette.mapNotNull { pc ->
+            counts[pc.hex.uppercase()]?.let { ColorStatRow(pc.key, pc.hex, it) }
+        }
+    }
+
+    fun exportPatternPng(hideWhite: Boolean, mirror: Boolean, attachStats: Boolean) {
+        val g = gridData ?: run { toast = "请先生成图纸"; return }
+        if (exporting) return
+        exporting = true
+        toast = "正在导出图纸…"
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bmp = Exporter.renderPatternBitmap(
+                        g, circleFrame, statRows(), totalBeadCount,
+                        hideWhite, mirror, attachStats
+                    )
+                    Exporter.savePngToPictures(app, bmp, "拼豆图纸_${g.n}x${g.m}.png")
+                }
+            }
+            exporting = false
+            result.onSuccess {
+                toast = "已导出到 相册/PerlerBeads"
+            }.onFailure {
+                toast = "导出失败：${it.message ?: "图片过大内存不足，请调小粒度重试"}"
+            }
+        }
+    }
+
+    fun exportPatternPdf(hideWhite: Boolean, mirror: Boolean) {
+        val g = gridData ?: run { toast = "请先生成图纸"; return }
+        if (exporting) return
+        exporting = true
+        toast = "正在生成 PDF…"
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = PdfExporter.buildPatternPdf(
+                        g, circleFrame, statRows(), totalBeadCount
+                    )
+                    Exporter.savePdfToDownloads(app, bytes, "拼豆图纸_${g.n}x${g.m}.pdf")
+                }
+            }
+            exporting = false
+            result.onSuccess {
+                toast = "PDF 已保存到 下载/PerlerBeads"
+            }.onFailure {
+                toast = "PDF 生成失败：${it.message ?: "未知错误"}"
+            }
+        }
     }
 
     // ---------- 派生 ----------

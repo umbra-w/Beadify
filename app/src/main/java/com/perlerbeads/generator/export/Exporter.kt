@@ -27,6 +27,47 @@ data class ColorStatRow(
 object Exporter {
 
     /**
+     * 渲染图纸位图（可选拼接统计表）。
+     * 内存预算分级：带统计 1200 万像素、不带 1800 万像素 —— 统计表若按图纸全宽缩放
+     * 会放大 10 倍导致 OOM（曾导致导出无反应/只有统计没有图纸），故宽度封顶 1600px 水平居中。
+     */
+    fun renderPatternBitmap(
+        grid: com.perlerbeads.generator.model.GridData,
+        circle: com.perlerbeads.generator.model.CircleGeometry?,
+        stats: List<ColorStatRow>,
+        totalCount: Int,
+        hideWhite: Boolean,
+        mirror: Boolean,
+        attachStats: Boolean
+    ): Bitmap {
+        val budget = if (attachStats) 12_000_000f else 18_000_000f
+        val cellByArea = kotlin.math.sqrt(budget / (grid.n * grid.m)).toInt()
+        val gridCell = cellByArea.coerceIn(16, 48)
+        val circleCell = circle?.let { (4096f / (2f * it.radius)).toInt() } ?: Int.MAX_VALUE
+        val cell = maxOf(4, minOf(48, minOf(gridCell, circleCell)))
+        val pattern = GridRenderer.render(
+            grid, cell, showBorders = true, showKeys = true,
+            hideWhiteKeys = hideWhite, mirror = mirror,
+            circle = circle
+        )
+        if (!attachStats) return pattern
+
+        val statsWidth = minOf(pattern.width, 1600)
+        val statsBmp = renderStatsBitmap(stats, totalCount, width = statsWidth)
+        val combined = Bitmap.createBitmap(
+            pattern.width, pattern.height + statsBmp.height, Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(combined)
+        canvas.drawColor(Color.WHITE)
+        val statsLeft = (pattern.width - statsWidth) / 2f
+        canvas.drawBitmap(pattern, 0f, 0f, null)
+        canvas.drawBitmap(statsBmp, statsLeft, pattern.height.toFloat(), null)
+        statsBmp.recycle()
+        pattern.recycle()
+        return combined
+    }
+
+    /**
      * 生成颜色统计 PNG：色块 + 色号 + 数量，按数量降序。
      * @param width 输出宽度；拼接到大图下方时传与大图一致的宽度，内部按比例缩放字号
      */

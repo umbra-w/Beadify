@@ -655,62 +655,21 @@ fun EditorScreen(vm: AppViewModel) {
         ExportDialog(
             onDismiss = { showExport = false },
             onPattern = { hideWhite, mirror, attachStats ->
-                showExport = false
-                val bmp = runCatching {
-                    // 分辨率预算：整图 ≤ 3600 万像素（网页版无上限，此处兼顾内存），
-                    // 90×135 图约 54px/格（网页版 30px），叠加加粗对比色文字，清晰度对齐
-                    val cellByArea = kotlin.math.sqrt(36_000_000f / (grid.n * grid.m)).toInt()
-                    val gridCell = cellByArea.coerceIn(16, 64)
-                    val circleCell = vm.circleFrame?.let { (4096f / (2f * it.radius)).toInt() } ?: Int.MAX_VALUE
-                    val cell = maxOf(4, minOf(64, minOf(gridCell, circleCell)))
-                    val pattern = GridRenderer.render(
-                        grid, cell, showBorders = true, showKeys = true,
-                        hideWhiteKeys = hideWhite, mirror = mirror,
-                        circle = vm.circleFrame
-                    ) ?: return@runCatching null
-                    if (!attachStats) return@runCatching pattern
-                    // 统计表拼接在图纸下方（同宽），对齐网页版「图+统计一起出」的习惯
-                    val statsBmp = Exporter.renderStatsBitmap(statsRows(vm), vm.totalBeadCount, width = pattern.width)
-                    val combined = Bitmap.createBitmap(
-                        pattern.width, pattern.height + statsBmp.height, Bitmap.Config.ARGB_8888
-                    )
-                    val canvas = android.graphics.Canvas(combined)
-                    canvas.drawColor(android.graphics.Color.WHITE)
-                    canvas.drawBitmap(pattern, 0f, 0f, null)
-                    canvas.drawBitmap(statsBmp, 0f, pattern.height.toFloat(), null)
-                    statsBmp.recycle()
-                    pattern.recycle()
-                    combined
-                }.getOrNull()
-                if (bmp != null) {
-                    val uri = Exporter.savePngToPictures(context, bmp, "拼豆图纸_${grid.n}x${grid.m}.png")
-                    share(context, uri, "image/png")
-                }
+                // 导出走 VM 后台线程（渲染大图在主线程会卡顿/OOM），完成后 toast 提示
+                vm.exportPatternPng(hideWhite, mirror, attachStats)
             },
             onPdf = { hideWhite, mirror ->
-                showExport = false
-                val bytes = runCatching {
-                    PdfExporter.buildPatternPdf(
-                        grid,
-                        circle = vm.circleFrame,
-                        stats = statsRows(vm),
-                        totalCount = vm.totalBeadCount
-                    )
-                }.getOrNull()
-                if (bytes != null) {
-                    val uri = Exporter.savePdfToDownloads(context, bytes, "拼豆图纸_${grid.n}x${grid.m}.pdf")
-                    share(context, uri, "application/pdf")
-                }
+                vm.exportPatternPdf(hideWhite, mirror)
             },
             onStats = {
                 showExport = false
-                val bmp = Exporter.renderStatsBitmap(statsRows(vm), vm.totalBeadCount)
+                val bmp = Exporter.renderStatsBitmap(vm.statRows(), vm.totalBeadCount)
                 val uri = Exporter.savePngToPictures(context, bmp, "拼豆颜色统计.png")
                 share(context, uri, "image/png")
             },
             onList = {
                 showExport = false
-                val csv = Exporter.buildShoppingListCsv(statsRows(vm), vm.totalBeadCount)
+                val csv = Exporter.buildShoppingListCsv(vm.statRows(), vm.totalBeadCount)
                 val uri = Exporter.saveCsvToDownloads(context, csv, "拼豆采购清单.csv")
                 share(context, uri, "text/csv")
             }
@@ -898,13 +857,6 @@ private fun clampEditorOffset(off: Offset, cw: Float, ch: Float, gw: Float, gh: 
     val maxX = abs(cw - gw) / 2f
     val maxY = abs(ch - gh) / 2f
     return Offset(off.x.coerceIn(-maxX, maxX), off.y.coerceIn(-maxY, maxY))
-}
-
-private fun statsRows(vm: AppViewModel): List<ColorStatRow> {
-    val counts = vm.stats?.counts ?: return emptyList()
-    return vm.gridPalette.mapNotNull { pc ->
-        counts[pc.hex.uppercase()]?.let { ColorStatRow(pc.key, pc.hex, it) }
-    }
 }
 
 @Composable
