@@ -126,8 +126,8 @@ powershell -ExecutionPolicy Bypass -File scripts/run_full_feature_e2e_tests.ps1
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/perler-beads-android.git
-cd perler-beads-android
+git clone https://github.com/umbra-w/Beadify.git
+cd Beadify
 
 # 编译 Debug APK
 ./gradlew assembleDebug
