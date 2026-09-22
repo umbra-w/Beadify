@@ -181,7 +181,7 @@ object Exporter {
         }
 
         // 底部落款
-        val bottomText = "由拼豆图纸生成器导出"
+        val bottomText = "由 Beadify 智能拼豆图纸生成器导出"
         val smallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textSize = 17f
             color = 0xFF999999.toInt()
