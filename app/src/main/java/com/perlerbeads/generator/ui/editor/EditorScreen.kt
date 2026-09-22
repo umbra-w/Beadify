@@ -675,6 +675,12 @@ fun EditorScreen(vm: AppViewModel) {
                 val csv = Exporter.buildShoppingListCsv(vm.statRows(), vm.totalBeadCount)
                 val uri = Exporter.saveCsvToDownloads(context, csv, "拼豆采购清单.csv")
                 share(context, uri, "text/csv")
+            },
+            onPatternCsv = {
+                showExport = false
+                val g = vm.gridData ?: return@ExportDialog
+                val uri = Exporter.savePatternCsvToDownloads(context, g, "拼豆图纸_${g.n}x${g.m}.csv")
+                share(context, uri, "text/csv")
             }
         )
     }
@@ -954,7 +960,8 @@ private fun ExportDialog(
     onPattern: (hideWhite: Boolean, mirror: Boolean, attachStats: Boolean) -> Unit,
     onPdf: (pitch: com.perlerbeads.generator.model.BeadPitch) -> Unit,
     onStats: () -> Unit,
-    onList: () -> Unit
+    onList: () -> Unit,
+    onPatternCsv: () -> Unit
 ) {
     var hideWhite by remember { mutableStateOf(true) }
     var mirror by remember { mutableStateOf(false) }
@@ -997,6 +1004,8 @@ private fun ExportDialog(
                 FilterChip(selected = false, onClick = onStats, label = { Text("颜色统计图 PNG") })
                 Spacer(Modifier.height(8.dp))
                 FilterChip(selected = false, onClick = onList, label = { Text("采购清单 CSV") })
+                Spacer(Modifier.height(8.dp))
+                FilterChip(selected = false, onClick = onPatternCsv, label = { Text("图纸 CSV（用于电脑/网页互通）") })
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = attachStats, onCheckedChange = { attachStats = it })

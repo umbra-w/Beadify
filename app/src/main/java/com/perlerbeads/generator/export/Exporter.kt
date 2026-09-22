@@ -144,6 +144,12 @@ object Exporter {
         return sb.toString()
     }
 
+    /** 保存图纸 CSV 到下载目录（可供分享或在其他设备重新导入）。 */
+    fun savePatternCsvToDownloads(context: Context, grid: com.perlerbeads.generator.model.GridData, name: String): Uri {
+        val csv = com.perlerbeads.generator.data.CsvCodec.exportPatternCsv(grid)
+        return saveCsvToDownloads(context, csv, name)
+    }
+
     /**
      * 保存 PNG 到相册（API 29+ 走 MediaStore；旧版本写外部私有目录并触发媒体扫描）。
      * @return 可分享的 Uri

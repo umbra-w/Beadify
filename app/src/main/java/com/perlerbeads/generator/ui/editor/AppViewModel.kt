@@ -656,6 +656,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- 图纸 CSV 导入 ----------
+
+    /** 导入 CSV 图纸并进入编辑器。 */
+    fun importPatternCsv(csvContent: String) {
+        try {
+            val grid = com.perlerbeads.generator.data.CsvCodec.importPatternCsv(
+                csvContent,
+                paletteRepository.fullBeadPalette
+            )
+            gridData = grid
+            circleFrame = null
+            bitmap = null
+            excludedHexes = emptySet()
+            clearEditHistory()
+            recomputeStats()
+            selectedPaintColor = activePalette.firstOrNull()
+            toast = "已导入图纸：${grid.n}×${grid.m} 格"
+            screen = Screen.Editor
+        } catch (e: Exception) {
+            toast = "导入失败：${e.message ?: "格式错误"}"
+        }
+    }
+
     // ---------- 项目保存/加载 ----------
 
     var projects by mutableStateOf<List<ProjectStore.ProjectMeta>>(emptyList())

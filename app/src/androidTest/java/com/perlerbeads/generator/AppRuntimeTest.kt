@@ -185,4 +185,15 @@ class AppRuntimeTest {
         )
         assertTrue(bmp.width > 0 && bmp.height > 0)
     }
+
+    @Test
+    fun csvPattern_roundTripPreservesStructure() {
+        val g = testGrid()
+        val csv = com.perlerbeads.generator.data.CsvCodec.exportPatternCsv(g)
+        val restored = com.perlerbeads.generator.data.CsvCodec.importPatternCsv(csv)
+        assertEquals(g.n, restored.n)
+        assertEquals(g.m, restored.m)
+        assertEquals(g.cells[0][0].colorHex, restored.cells[0][0].colorHex)
+        assertEquals(g.cells[5][3].colorHex, restored.cells[5][3].colorHex)
+    }
 }

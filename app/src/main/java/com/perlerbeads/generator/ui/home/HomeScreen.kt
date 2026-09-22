@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FontDownload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
@@ -44,9 +47,23 @@ fun HomeScreen(vm: AppViewModel) {
         if (uri != null) vm.onImagePicked(context, uri)
     }
 
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val text = context.contentResolver.openInputStream(uri)?.use {
+                it.bufferedReader(Charsets.UTF_8).readText()
+            }
+            if (!text.isNullOrBlank()) {
+                vm.importPatternCsv(text)
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -145,6 +162,37 @@ fun HomeScreen(vm: AppViewModel) {
                     Text("我的项目", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "已保存的图纸，点击继续编辑或导出",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // 导入图纸 CSV
+        Card(
+            onClick = { csvLauncher.launch("*/*") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(88.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.size(16.dp))
+                Column {
+                    Text("导入图纸 CSV", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "导入网页版或外部导出的网格图纸",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
