@@ -19,6 +19,25 @@ enum class ColorSystem(val key: String) {
     }
 }
 
+/** 拼豆品牌与色卡系列。 */
+enum class BeadBrand(
+    val id: String,
+    val displayName: String,
+    val defaultPitch: BeadPitch,
+    val assetPath: String?
+) {
+    MARD("mard", "国内通用 (Mard 291色)", BeadPitch.STANDARD_5_0, null),
+    ARTKAL_S("artkal_s", "Artkal S系列 (5.0mm软豆 199色)", BeadPitch.STANDARD_5_0, "palettes/artkal_s.json"),
+    ARTKAL_C("artkal_c", "Artkal C系列 (2.6mm硬豆 174色)", BeadPitch.MINI_2_6, "palettes/artkal_c.json"),
+    ARTKAL_A("artkal_a", "Artkal A系列 (2.6mm软豆 145色)", BeadPitch.MINI_2_6, "palettes/artkal_a.json"),
+    PERLER("perler", "Perler 标准色 (5.0mm 103色)", BeadPitch.STANDARD_5_0, "palettes/perler.json"),
+    HAMA("hama", "Hama Midi (5.0mm 92色)", BeadPitch.STANDARD_5_0, "palettes/hama.json");
+
+    companion object {
+        fun fromId(id: String): BeadBrand = entries.find { it.id.equals(id, ignoreCase = true) } ?: MARD
+    }
+}
+
 /** 像素化模式：卡通（主导色）/ 真实（平均色）。 */
 enum class PixelationMode {
     DOMINANT, AVERAGE
@@ -47,11 +66,15 @@ data class RgbColor(val r: Int, val g: Int, val b: Int)
  * 色板色。
  * @param key 当前色号系统下的显示色号（MARD 为 "A01" 等；内部全量色板时 key=hex）
  * @param hex 标准 hex（大写），数据主键
+ * @param name 官方色名（英文/中文名，如 "White", "Evergreen"）
+ * @param brand 所属品牌/系列
  */
 data class PaletteColor(
     val key: String,
     val hex: String,
-    val rgb: RgbColor
+    val rgb: RgbColor,
+    val name: String = "",
+    val brand: BeadBrand = BeadBrand.MARD
 )
 
 /** 网格单元。@param colorHex hex（大写）。 */

@@ -70,6 +70,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val settings = SettingsStore(app)
     val paletteRepository = PaletteRepository(app)
     val projectStore = ProjectStore(app)
+    val inventoryStore = com.perlerbeads.generator.data.InventoryStore(app)
+
+    var currentBrand by mutableStateOf(settings.beadBrand)
+        private set
 
     var screen by mutableStateOf<Screen>(Screen.Home)
         private set
@@ -166,12 +170,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // init 按声明顺序执行时会因委托未初始化而 NPE；项目列表在 ProjectsScreen 进入时刷新
     }
 
-    // ---------- 色板 ----------
+    // ---------- 色板与品牌 ----------
 
     fun refreshActivePalette() {
+        val brand = settings.beadBrand
+        currentBrand = brand
+        val fullForBrand = paletteRepository.getPaletteForBrand(brand)
+        val inStockHexes = if (settings.onlyInStockGeneration) {
+            inventoryStore.getInStockHexes(brand, fullForBrand)
+        } else {
+            null
+        }
+
         activePalette = paletteRepository
-            .buildActivePalette(settings.loadPaletteSelections(), settings.colorSystem)
+            .buildActivePalette(
+                brand = brand,
+                selections = settings.loadPaletteSelections(brand),
+                colorSystem = settings.colorSystem,
+                onlyInStock = settings.onlyInStockGeneration,
+                inStockHexes = inStockHexes
+            )
             .filter { it.hex.uppercase() !in excludedHexes }
+
         // 若当前画笔色已被排除/移除，回退到第一个可用色
         val sel = selectedPaintColor
         if (sel != null && activePalette.none { it.hex.uppercase() == sel.hex.uppercase() }) {
@@ -182,6 +202,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setColorSystem(cs: ColorSystem) {
         settings.colorSystem = cs
         refreshActivePalette()
+    }
+
+    fun setBeadBrand(brand: com.perlerbeads.generator.model.BeadBrand) {
+        if (settings.beadBrand == brand) return
+        settings.beadBrand = brand
+        currentBrand = brand
+        refreshActivePalette()
+    }
+
+    /**
+     * 编辑页快速切换品牌：立即换色板并对现有图纸就近重映射。
+     */
+    fun switchBeadBrandAndRemap(brand: com.perlerbeads.generator.model.BeadBrand) {
+        if (brand == settings.beadBrand) return
+        settings.beadBrand = brand
+        currentBrand = brand
+        refreshActivePalette()
+        val g = gridData ?: return
+        saveSnapshot()
+        g.cells = remapGridToNearestPalette(g.cells, activePalette)
+        gridVersion++
+        recomputeStats()
+        selectedPaintColor = activePalette.firstOrNull()
+        toast = "已切换到 ${brand.displayName}，颜色已完成就近重映射（可撤回）"
     }
 
     /**
@@ -199,6 +243,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         recomputeStats()
         selectedPaintColor = activePalette.firstOrNull()
         toast = "已切换到 ${cs.key}，颜色已就近重映射（可撤回）"
+    }
+
+    /** 分析当前图纸的缺料情况。 */
+    fun getMissingColorAnalysis(): List<com.perlerbeads.generator.algorithm.MissingColorItem> {
+        val g = gridData ?: return emptyList()
+        val brand = settings.beadBrand
+        val fullList = paletteRepository.getPaletteForBrand(brand)
+        val inStockHexes = inventoryStore.getInStockHexes(brand, fullList)
+        val inStockPalette = fullList.filter { inStockHexes.contains(it.hex.uppercase()) }
+        val lookup = fullList.associateBy { it.hex.uppercase() }
+
+        return com.perlerbeads.generator.algorithm.ColorSubstitution.analyzeMissingColors(
+            cells = g.cells,
+            inStockHexes = inStockHexes,
+            inStockPalette = inStockPalette,
+            paletteLookup = lookup,
+            cellFilter = circleFilter(g)
+        )
+    }
+
+    /** 一键将图纸中指定颜色格子替换为平替色。 */
+    fun substituteColorInGrid(fromHex: String, toColor: PaletteColor) {
+        val g = gridData ?: return
+        saveSnapshot()
+        g.cells = com.perlerbeads.generator.algorithm.ColorSubstitution.substituteColorInCells(
+            cells = g.cells,
+            fromHex = fromHex,
+            toColor = toColor
+        )
+        gridVersion++
+        recomputeStats()
+        toast = "已将 ${fromHex} 批量平替为 ${toColor.key}"
     }
 
     fun setSelectedPaint(color: PaletteColor) {

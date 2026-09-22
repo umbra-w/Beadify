@@ -214,20 +214,64 @@ fun SettingsScreen(vm: AppViewModel) {
 
             Spacer(Modifier.height(16.dp))
 
-            // 色号系统
-            Text("色号系统", style = MaterialTheme.typography.titleMedium)
+            // 拼豆品牌与色板
+            Text("拼豆品牌与色卡", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ColorSystem.entries.forEach { cs ->
+                com.perlerbeads.generator.model.BeadBrand.entries.forEach { brand ->
                     FilterChip(
-                        selected = vm.settings.colorSystem == cs,
-                        onClick = { vm.setColorSystem(cs) },
-                        label = { Text(cs.key) }
+                        selected = vm.currentBrand == brand,
+                        onClick = { vm.setBeadBrand(brand) },
+                        label = { Text(brand.displayName) }
                     )
                 }
+            }
+
+            // 若选国内通用，则显示店家色号系统
+            if (vm.currentBrand == com.perlerbeads.generator.model.BeadBrand.MARD) {
+                Spacer(Modifier.height(12.dp))
+                Text("色号系统", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ColorSystem.entries.forEach { cs ->
+                        FilterChip(
+                            selected = vm.settings.colorSystem == cs,
+                            onClick = { vm.setColorSystem(cs) },
+                            label = { Text(cs.key) }
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 豆仓库存约束
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("只用豆仓库存颜色生成", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "开启后像素化仅使用手头已有库存色，100% 避免缺料停工",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = vm.settings.onlyInStockGeneration,
+                    onCheckedChange = {
+                        vm.settings.onlyInStockGeneration = it
+                        vm.refreshActivePalette()
+                    }
+                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -240,7 +284,7 @@ fun SettingsScreen(vm: AppViewModel) {
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedButton(onClick = { vm.navigate(Screen.Palette) }) {
-                    Text("管理色板")
+                    Text("管理色板与豆仓")
                 }
             }
 

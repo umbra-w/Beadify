@@ -47,6 +47,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -59,6 +62,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.perlerbeads.generator.model.BeadBrand
+import com.perlerbeads.generator.model.RgbColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -116,6 +123,7 @@ fun EditorScreen(vm: AppViewModel) {
     var showAiConfig by remember { mutableStateOf(false) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var showPaletteSwitch by remember { mutableStateOf(false) }
+    var selectedMissingItem by remember { mutableStateOf<com.perlerbeads.generator.algorithm.MissingColorItem?>(null) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -589,8 +597,13 @@ fun EditorScreen(vm: AppViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp)
             ) {
-                // 色号系统快速切换（点击弹出选择，切换后现有图纸就近重映射）
+                // 品牌与色号系统快速切换（点击弹出选择，切换后现有图纸就近重映射）
                 item(key = "system_chip") {
+                    val brandLabel = if (vm.currentBrand == BeadBrand.MARD) {
+                        vm.settings.colorSystem.key
+                    } else {
+                        vm.currentBrand.displayName.split(" ").first()
+                    }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
@@ -600,7 +613,7 @@ fun EditorScreen(vm: AppViewModel) {
                             .padding(horizontal = 10.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            vm.settings.colorSystem.key,
+                            brandLabel,
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -613,6 +626,7 @@ fun EditorScreen(vm: AppViewModel) {
                 }
                 items(vm.gridPalette, key = { it.hex }) { pc ->
                     val selected = vm.selectedPaintColor?.hex == pc.hex
+                    val inStock = vm.inventoryStore.isInStock(vm.currentBrand, pc.hex)
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.clickable {
@@ -624,7 +638,25 @@ fun EditorScreen(vm: AppViewModel) {
                             }
                         }
                     ) {
-                        ColorSwatch(pc, 36.dp, selected = selected)
+                        Box {
+                            ColorSwatch(pc, 36.dp, selected = selected)
+                            if (!inStock) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(Color(0xFFE65100))
+                                        .padding(horizontal = 2.dp)
+                                ) {
+                                    Text(
+                                        "缺",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             pc.key,
                             style = MaterialTheme.typography.labelSmall,
@@ -636,7 +668,12 @@ fun EditorScreen(vm: AppViewModel) {
 
             // ---------- 统计面板 ----------
             if (showStats) {
-                StatsPanel(vm)
+                StatsPanel(
+                    vm = vm,
+                    onFindSubstitute = { missingItem ->
+                        selectedMissingItem = missingItem
+                    }
+                )
             }
         }
 
@@ -691,38 +728,73 @@ fun EditorScreen(vm: AppViewModel) {
         )
     }
 
-    // ---------- 色号系统快速切换 ----------
+    // ---------- 品牌与色号系统快速切换 ----------
     if (showPaletteSwitch) {
         AlertDialog(
             onDismissRequest = { showPaletteSwitch = false },
-            title = { Text("切换色号系统") },
+            title = { Text("切换拼豆品牌与色板") },
             text = {
                 Column {
                     Text(
-                        "切换后当前图纸颜色会就近重映射到新色板（可撤回）",
+                        "切换后图纸将就近适配所选官方色板（可撤回）",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(12.dp))
+                    Text("选择品牌：", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(6.dp))
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ColorSystem.entries.forEach { cs ->
+                        BeadBrand.entries.forEach { brand ->
                             FilterChip(
-                                selected = vm.settings.colorSystem == cs,
+                                selected = vm.currentBrand == brand,
                                 onClick = {
-                                    vm.switchColorSystemAndRemap(cs)
+                                    vm.switchBeadBrandAndRemap(brand)
                                     showPaletteSwitch = false
                                 },
-                                label = { Text(cs.key) }
+                                label = { Text(brand.displayName) }
                             )
+                        }
+                    }
+
+                    if (vm.currentBrand == BeadBrand.MARD) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("国内店家色号系统：", style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.height(6.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ColorSystem.entries.forEach { cs ->
+                                FilterChip(
+                                    selected = vm.settings.colorSystem == cs,
+                                    onClick = {
+                                        vm.switchColorSystemAndRemap(cs)
+                                        showPaletteSwitch = false
+                                    },
+                                    label = { Text(cs.key) }
+                                )
+                            }
                         }
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showPaletteSwitch = false }) { Text("关闭") }
+            }
+        )
+    }
+
+    // ---------- 智能平替色弹窗 ----------
+    selectedMissingItem?.let { missingItem ->
+        SubstitutionDialog(
+            missingItem = missingItem,
+            onDismiss = { selectedMissingItem = null },
+            onApply = { sub ->
+                vm.substituteColorInGrid(missingItem.hex, sub)
+                selectedMissingItem = null
             }
         )
     }
@@ -917,23 +989,51 @@ private fun ColorSwatch(pc: PaletteColor, size: Dp, selected: Boolean = false) {
 }
 
 @Composable
-private fun StatsPanel(vm: AppViewModel) {
+private fun StatsPanel(
+    vm: AppViewModel,
+    onFindSubstitute: (com.perlerbeads.generator.algorithm.MissingColorItem) -> Unit
+) {
     val counts = vm.stats?.counts ?: return
+    val brand = vm.currentBrand
+    val fullList = vm.paletteRepository.getPaletteForBrand(brand)
+    val inStockHexes = vm.inventoryStore.getInStockHexes(brand, fullList)
+    val inStockPalette = fullList.filter { inStockHexes.contains(it.hex.uppercase()) }
+
     Surface(modifier = Modifier.fillMaxWidth(), shadowElevation = 4.dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(260.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp)
         ) {
-            Text("颜色统计（共 ${vm.totalBeadCount} 粒）", style = MaterialTheme.typography.titleMedium)
+            val missingCount = vm.gridPalette.count { !inStockHexes.contains(it.hex.uppercase()) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("颜色统计（共 ${vm.totalBeadCount} 粒）", style = MaterialTheme.typography.titleMedium)
+                if (missingCount > 0) {
+                    Text(
+                        "⚠️ 缺料 $missingCount 种",
+                        color = Color(0xFFE65100),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
             vm.gridPalette.forEach { pc ->
-                val count = counts[pc.hex.uppercase()] ?: 0
+                val hexUpper = pc.hex.uppercase()
+                val count = counts[hexUpper] ?: 0
+                val inStock = inStockHexes.contains(hexUpper)
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { vm.toggleExclude(pc.hex) }
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -942,21 +1042,149 @@ private fun StatsPanel(vm: AppViewModel) {
                     Text("${pc.key}  ${pc.hex}", modifier = Modifier.weight(1f))
                     Text("×${count}", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (pc.hex.uppercase() in vm.excludedHexes) "恢复" else "排除",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelMedium
-                    )
+
+                    if (!inStock) {
+                        Text(
+                            "缺料",
+                            color = Color(0xFFE65100),
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(
+                            onClick = {
+                                val sub = com.perlerbeads.generator.algorithm.ColorSubstitution.findBestSubstitute(
+                                    pc.hex,
+                                    pc.rgb,
+                                    inStockPalette
+                                )
+                                onFindSubstitute(
+                                    com.perlerbeads.generator.algorithm.MissingColorItem(
+                                        hex = pc.hex,
+                                        key = pc.key,
+                                        name = pc.name,
+                                        requiredCount = count,
+                                        substitute = sub
+                                    )
+                                )
+                            },
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("平替", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
+
+                    TextButton(
+                        onClick = { vm.toggleExclude(pc.hex) },
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(
+                            if (hexUpper in vm.excludedHexes) "恢复" else "排除",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "排除后自动重映射到邻近颜色；点击“恢复”重新生成",
+                "缺料项可点击“平替”使用手头已有库存色替代；排除后就近重映射",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
+}
+
+@Composable
+private fun SubstitutionDialog(
+    missingItem: com.perlerbeads.generator.algorithm.MissingColorItem,
+    onDismiss: () -> Unit,
+    onApply: (substitute: PaletteColor) -> Unit
+) {
+    val sub = missingItem.substitute
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("智能平替推荐") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "图纸中使用颜色【${missingItem.key}】（${missingItem.name}），共需要 ${missingItem.requiredCount} 粒，当前豆仓显示缺货。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (sub != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                "推荐库存平替色：",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 原色
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    ColorSwatch(PaletteColor(missingItem.key, missingItem.hex, RgbColor(0, 0, 0)), 36.dp)
+                                    Text("原色", style = MaterialTheme.typography.labelSmall)
+                                    Text(missingItem.key, style = MaterialTheme.typography.labelSmall)
+                                }
+                                Text("  ➔  ", style = MaterialTheme.typography.titleLarge)
+                                // 平替色
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    ColorSwatch(sub.substitute, 36.dp)
+                                    Text("平替", style = MaterialTheme.typography.labelSmall)
+                                    Text(sub.substitute.key, style = MaterialTheme.typography.labelSmall)
+                                }
+                                Spacer(Modifier.width(16.dp))
+                                Column {
+                                    Text(
+                                        "${"★".repeat(sub.rating.stars)} ${sub.rating.label}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (sub.rating.stars >= 4) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        "Oklab 色差: ${"%.1f".format(sub.deltaE)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        "点击下方“一键平替”将把图纸中所有此颜色的格子自动替换为推荐库存色（支持撤回）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        "当前豆仓中无任何可用库存色，请前往“色板与豆仓”标记已有颜色或采购原色。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (sub != null) {
+                Button(onClick = { onApply(sub.substitute) }) {
+                    Text("一键平替")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 @Composable
