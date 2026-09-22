@@ -47,6 +47,8 @@ fun SettingsScreen(vm: AppViewModel) {
     var mode by remember { mutableStateOf(vm.settings.mode) }
     var gridShape by remember { mutableStateOf(vm.settings.gridShape) }
     var dithering by remember { mutableStateOf(vm.settings.dithering) }
+    var maxColors by remember { mutableStateOf(vm.settings.maxColors) }
+    var cleanupIslands by remember { mutableStateOf(vm.settings.cleanupIslands) }
     var circleOffsetX by remember { mutableFloatStateOf(vm.settings.circleOffsetX) }
     var circleOffsetY by remember { mutableFloatStateOf(vm.settings.circleOffsetY) }
 
@@ -109,6 +111,51 @@ fun SettingsScreen(vm: AppViewModel) {
                     )
                 }
                 Switch(checked = dithering, onCheckedChange = { dithering = it })
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 受控色数限制 (Max Colors)
+            Text("色数控制 (Max Colors)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "限制图纸使用的最大颜色数量，精简配料成本，突出画面主体",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val limits = listOf(
+                    0 to "不限制",
+                    16 to "16 色",
+                    24 to "24 色",
+                    32 to "32 色",
+                    48 to "48 色"
+                )
+                limits.forEach { (limit, label) ->
+                    FilterChip(
+                        selected = maxColors == limit,
+                        onClick = { maxColors = limit },
+                        label = { Text(label) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 孤立噪点自动清理 (Island Cleanup)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("自动清理孤立飞点", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "自动平滑消除生成过程中 1 格孤立噪点，并保护连续线条（编辑页也可随时主动清理与撤回）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = cleanupIslands, onCheckedChange = { cleanupIslands = it })
             }
 
             Spacer(Modifier.height(16.dp))
@@ -206,6 +253,8 @@ fun SettingsScreen(vm: AppViewModel) {
                         vm.settings.mode = mode
                         vm.settings.gridShape = gridShape
                         vm.settings.dithering = dithering
+                        vm.settings.maxColors = maxColors
+                        vm.settings.cleanupIslands = cleanupIslands
                         vm.settings.circleOffsetX = circleOffsetX
                         vm.settings.circleOffsetY = circleOffsetY
                         vm.generate()

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Refresh
@@ -510,6 +511,11 @@ fun EditorScreen(vm: AppViewModel) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("去背景")
+                }
+                TextButton(onClick = { vm.cleanSpeckles() }) {
+                    Icon(Icons.Filled.CleaningServices, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("清理飞点")
                 }
                 // 撤回
                 TextButton(

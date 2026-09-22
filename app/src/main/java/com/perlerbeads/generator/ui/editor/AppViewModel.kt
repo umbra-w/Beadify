@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import com.perlerbeads.generator.algorithm.ColorStats
 import com.perlerbeads.generator.algorithm.autoRemoveBackground
 import com.perlerbeads.generator.algorithm.BoardSlice
+import com.perlerbeads.generator.algorithm.IslandCleanup
 import com.perlerbeads.generator.algorithm.boardCount
 import com.perlerbeads.generator.algorithm.boardProgressKey
 import com.perlerbeads.generator.algorithm.calculatePixelGrid
@@ -254,9 +255,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val n = settings.granularity
                 val aspect = bmp.height.toDouble() / bmp.width.toDouble()
                 val m = Math.max(1, Math.round(n * aspect).toInt())
-                // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动）
+                // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动、受控色数与噪点清理）
                 val initial = calculatePixelGrid(
-                    bmp, n, m, palette, settings.mode, t1, settings.dithering
+                    bmp, n, m, palette, settings.mode, t1, settings.dithering,
+                    maxColors = settings.maxColors,
+                    cleanupIslands = settings.cleanupIslands
                 )
 
                 val initialKeys = HashSet<String>()
@@ -426,6 +429,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             toast = "已去除背景 ${res.removedCount} 粒"
         } else {
             toast = "边缘未识别到可去除的背景"
+        }
+    }
+
+    /**
+     * 自动清理孤立飞点（1格孤岛），并保护连续线条与笔画。
+     * 支持在画布编辑阶段主动触发，并存入撤回栈支持一键回退。
+     */
+    fun cleanSpeckles(maxIslandSize: Int = 1, protectDiagonal: Boolean = true) {
+        val g = gridData ?: return
+        val cleaned = IslandCleanup.cleanupSpeckles(
+            g.cells,
+            maxIslandSize = maxIslandSize,
+            protectDiagonalLines = protectDiagonal
+        )
+        var changeCount = 0
+        for (r in 0 until g.m) {
+            for (c in 0 until g.n) {
+                if (g.cells[r][c].key != cleaned[r][c].key) {
+                    changeCount++
+                }
+            }
+        }
+        if (changeCount > 0) {
+            saveSnapshot()
+            g.cells = cleaned
+            gridVersion++
+            recomputeStats()
+            toast = "已清理 ${changeCount} 处孤立飞点（可撤回）"
+        } else {
+            toast = "未检测到孤立飞点"
         }
     }
 

@@ -273,5 +273,74 @@ class AppRuntimeTest {
         val loaded = settings.loadCellProgress(testKey)
         assertEquals(cells, loaded)
     }
+
+    @Test
+    fun settingsStore_maxColorsAndIslandCleanup_persistence() {
+        val settings = com.perlerbeads.generator.data.SettingsStore(context)
+        // 验证可读写
+        settings.maxColors = 24
+        settings.cleanupIslands = true
+        assertEquals(24, settings.maxColors)
+        assertTrue(settings.cleanupIslands)
+
+        // 恢复默认测试
+        settings.maxColors = 0
+        settings.cleanupIslands = false
+        assertEquals(0, settings.maxColors)
+        assertEquals(false, settings.cleanupIslands)
+    }
+
+    @Test
+    fun pixelation_withRealBitmap_respectsMaxColorsAndIslandCleanup() {
+        // 创建一个带有梯度与 1 格孤立白噪点的 16×16 Bitmap
+        val bmp = android.graphics.Bitmap.createBitmap(16, 16, android.graphics.Bitmap.Config.ARGB_8888)
+        val colors = intArrayOf(
+            0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFF0000FF.toInt(),
+            0xFFFFFF00.toInt(), 0xFFFF00FF.toInt(), 0xFF00FFFF.toInt(),
+            0xFF800000.toInt(), 0xFF008000.toInt(), 0xFF000080.toInt()
+        )
+        for (y in 0 until 16) {
+            for (x in 0 until 16) {
+                bmp.setPixel(x, y, colors[(x + y) % colors.size])
+            }
+        }
+        // 在红色区域 (2, 2) 置一个孤立噪点
+        bmp.setPixel(2, 2, 0xFFFFFFFF.toInt())
+
+        val palette = listOf(
+            PaletteColor("P01", "#FF0000", RgbColor(255, 0, 0)),
+            PaletteColor("P02", "#00FF00", RgbColor(0, 255, 0)),
+            PaletteColor("P03", "#0000FF", RgbColor(0, 0, 255)),
+            PaletteColor("P04", "#FFFF00", RgbColor(255, 255, 0)),
+            PaletteColor("P05", "#FF00FF", RgbColor(255, 0, 255)),
+            PaletteColor("P06", "#00FFFF", RgbColor(0, 255, 255)),
+            PaletteColor("P07", "#FFFFFF", RgbColor(255, 255, 255))
+        )
+        val fallback = palette[0]
+
+        // 1. 默认无限制（maxColors=0, cleanupIslands=false）
+        val unconstrained = com.perlerbeads.generator.algorithm.calculatePixelGrid(
+            bmp, 16, 16, palette, PixelationMode.DOMINANT, fallback,
+            dithering = false, maxColors = 0, cleanupIslands = false
+        )
+        val unconstrainedKeys = unconstrained.flatMap { it.toList() }.map { it.key }.toSet()
+        assertTrue("无限制时应使用超过 3 种颜色", unconstrainedKeys.size > 3)
+
+        // 2. 启用受控色数限制（maxColors = 3）
+        val constrained = com.perlerbeads.generator.algorithm.calculatePixelGrid(
+            bmp, 16, 16, palette, PixelationMode.DOMINANT, fallback,
+            dithering = false, maxColors = 3, cleanupIslands = false
+        )
+        val constrainedKeys = constrained.flatMap { it.toList() }.map { it.key }.toSet()
+        assertTrue("受控色数应 <= 3，实际为 ${constrainedKeys.size}", constrainedKeys.size <= 3)
+
+        // 3. 启用噪点清理（cleanupIslands = true）
+        val cleaned = com.perlerbeads.generator.algorithm.calculatePixelGrid(
+            bmp, 16, 16, palette, PixelationMode.DOMINANT, fallback,
+            dithering = false, maxColors = 0, cleanupIslands = true
+        )
+        // 原先 (2, 2) 是孤立白色 P07，清理后应被邻域主色取代
+        assertNotEquals("P07", cleaned[2][2].key)
+    }
 }
 

@@ -34,6 +34,8 @@ fun findClosestPaletteColor(target: RgbColor, palette: List<PaletteColor>): Pale
  * 内部先 getPixels 读一次全图，再按窗口遍历，等价于网页版 getImageData。
  *
  * @param dithering 开启 Floyd-Steinberg 误差扩散抖动（照片类图片过渡更自然）
+ * @param maxColors 限制最大使用颜色数（0 为不限制，如 16/24/32/48）
+ * @param cleanupIslands 是否自动清理孤立的 1 格噪点飞点
  */
 fun calculatePixelGrid(
     bitmap: Bitmap,
@@ -42,7 +44,9 @@ fun calculatePixelGrid(
     palette: List<PaletteColor>,
     mode: PixelationMode,
     fallback: PaletteColor,
-    dithering: Boolean = false
+    dithering: Boolean = false,
+    maxColors: Int = 0,
+    cleanupIslands: Boolean = false
 ): Array<Array<MappedPixel>> {
     val reps = Array(m) { arrayOfNulls<RgbColor>(n) }
     val imgWidth = bitmap.width
@@ -65,18 +69,34 @@ fun calculatePixelGrid(
             reps[j][i] = calculateCellRepresentativeColor(fullImage, imgWidth, startX, startY, cw, ch, mode)
         }
     }
-    return if (dithering) {
-        quantizeWithDithering(reps, palette, fallback)
+
+    // 1. 如果启用了受控色数限制且候选色大于上限，先由 Oklab 中位切割聚类计算优选子色板
+    val activePalette = if (maxColors > 0 && palette.size > maxColors) {
+        ColorQuantizer.computeControlledPalette(reps, palette, maxColors)
+    } else {
+        palette
+    }
+
+    // 2. 映射量化（误差扩散抖动或最近邻）
+    var grid = if (dithering) {
+        quantizeWithDithering(reps, activePalette, fallback)
     } else {
         Array(m) { j ->
             Array(n) { i ->
                 reps[j][i]?.let { rep ->
-                    val closest = findClosestPaletteColor(rep, palette)
+                    val closest = findClosestPaletteColor(rep, activePalette)
                     MappedPixel(closest.key, closest.hex, false)
                 } ?: transparentColorData
             }
         }
     }
+
+    // 3. 如果开启了噪点清理，平滑 1 格孤岛并保护连续线条与笔画
+    if (cleanupIslands) {
+        grid = IslandCleanup.cleanupSpeckles(grid, maxIslandSize = 1, protectDiagonalLines = true)
+    }
+
+    return grid
 }
 
 /**

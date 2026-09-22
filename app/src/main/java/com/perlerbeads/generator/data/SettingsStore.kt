@@ -116,6 +116,16 @@ class SettingsStore(context: Context) {
         }
     }
 
+    /** 受控色数上限（0=不限制，16/24/32/48 等）。 */
+    var maxColors: Int
+        get() = prefs.getInt(KEY_MAX_COLORS, 0)
+        set(v) { prefs.edit().putInt(KEY_MAX_COLORS, v).apply() }
+
+    /** 孤立噪点自动清理（去除 1 格无意义孤岛飞点）。 */
+    var cleanupIslands: Boolean
+        get() = prefs.getBoolean(KEY_CLEANUP_ISLANDS, false)
+        set(v) { prefs.edit().putBoolean(KEY_CLEANUP_ISLANDS, v).apply() }
+
     companion object {
         private const val KEY_COLOR_SYSTEM = "color_system"
         private const val KEY_GRANULARITY = "granularity"
@@ -130,5 +140,7 @@ class SettingsStore(context: Context) {
         private const val KEY_BOARD_SIZE = "board_size"
         private const val KEY_BOARD_PROGRESS_PREFIX = "board_progress_"
         private const val KEY_CELL_PROGRESS_PREFIX = "cell_progress_"
+        private const val KEY_MAX_COLORS = "max_colors"
+        private const val KEY_CLEANUP_ISLANDS = "cleanup_islands"
     }
 }
