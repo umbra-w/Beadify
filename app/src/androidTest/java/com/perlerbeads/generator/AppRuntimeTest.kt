@@ -60,17 +60,18 @@ class AppRuntimeTest {
             testGrid(), null, stats, 24,
             hideWhite = true, mirror = false, attachStats = true
         )
-        // 图纸上半（红区）应有红色像素
+        // 图纸区域应存在红/蓝像素（区域内多点采样，避开格子边界线与色号文字）
         var redFound = false
-        for (x in 5 until bmp.width step 5) {
-            if (bmp.getPixel(x, 10) == 0xFFFF0000.toInt()) redFound = true
-        }
-        assertTrue("图纸区域未绘制（导出只有统计）", redFound)
-        // 图纸下半（蓝区）应有蓝色像素
         var blueFound = false
-        for (x in 5 until bmp.width step 5) {
-            if (bmp.getPixel(x, 240) == 0xFF0000FF.toInt()) blueFound = true
+        outer@ for (y in 5 until 280 step 4) {
+            for (x in 3 until bmp.width step 4) {
+                val p = bmp.getPixel(x, y)
+                if (p == 0xFFFF0000.toInt()) redFound = true
+                if (p == 0xFF0000FF.toInt()) blueFound = true
+                if (redFound && blueFound) break@outer
+            }
         }
+        assertTrue("图纸红色区域未绘制（导出只有统计）", redFound)
         assertTrue("图纸蓝色区域未绘制", blueFound)
         // 统计区域应存在（底部有非透明内容）
         val bottom = bmp.getPixel(bmp.width / 2, bmp.height - 5)
