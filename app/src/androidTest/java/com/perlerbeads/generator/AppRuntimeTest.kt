@@ -108,6 +108,23 @@ class AppRuntimeTest {
     }
 
     @Test
+    fun patternExport_statsMultiColumn_adaptsToWidthAndReducesHeight() {
+        val rows = (1..36).map {
+            ColorStatRow("C$it", String.format("#%06X", it * 12345), 100 - it)
+        }
+        // 1. 较窄宽度（480px）：自适应为 1 列
+        val narrow = Exporter.renderStatsBitmap(rows, 2000, width = 480)
+        // 2. 较宽宽度（1800px）：自适应为 4~5 列，高度显著缩减
+        val wide = Exporter.renderStatsBitmap(rows, 2000, width = 1800)
+
+        assertEquals(480, narrow.width)
+        assertEquals(1800, wide.width)
+        assertTrue("宽图多列排版高度 (${wide.height}) 应显著低于单列高度 (${narrow.height})", wide.height < narrow.height * 0.5f)
+        narrow.recycle()
+        wide.recycle()
+    }
+
+    @Test
     fun textBeads_strokesBecomeBeads_andBackgroundFillWorks() {
         val black = PaletteColor("A01", "#000000", RgbColor(0, 0, 0))
         val white = PaletteColor("T01", "#FFFFFF", RgbColor(255, 255, 255))

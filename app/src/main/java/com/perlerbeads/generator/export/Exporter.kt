@@ -28,8 +28,9 @@ object Exporter {
 
     /**
      * 渲染图纸位图（可选拼接统计表）。
-     * 内存预算分级：带统计 1200 万像素、不带 1800 万像素 —— 统计表若按图纸全宽缩放
-     * 会放大 10 倍导致 OOM（曾导致导出无反应/只有统计没有图纸），故宽度封顶 1600px 水平居中。
+     * 内存预算分级：带统计 1200 万像素、不带 1800 万像素。
+     * 统计表宽度与图纸严格对齐，内部根据图纸尺寸自适应多列网格排版，
+     * 彻底解决单列排版导致大图底部过度拉长与左右留白问题。
      */
     fun renderPatternBitmap(
         grid: com.perlerbeads.generator.model.GridData,
@@ -52,17 +53,19 @@ object Exporter {
         )
         if (!attachStats) return pattern
 
-        // 统计表字号与图纸色号同尺度（约 0.75×格宽），宽度自适应并封顶——
-        // 之前按图纸全宽等比放大，大图上文字被放大近 10 倍，观感过大
-        val statsWidth = (cell * 10).coerceIn(480, 1600)
+        // 统计表宽度与图纸等宽对齐（若图纸极小，保底 480px 居中对齐）
+        val statsWidth = maxOf(pattern.width, 480)
         val statsBmp = renderStatsBitmap(stats, totalCount, width = statsWidth)
+        val combinedWidth = maxOf(pattern.width, statsBmp.width)
+        val combinedHeight = pattern.height + statsBmp.height
         val combined = Bitmap.createBitmap(
-            pattern.width, pattern.height + statsBmp.height, Bitmap.Config.ARGB_8888
+            combinedWidth, combinedHeight, Bitmap.Config.ARGB_8888
         )
         val canvas = Canvas(combined)
         canvas.drawColor(Color.WHITE)
-        val statsLeft = (pattern.width - statsWidth) / 2f
-        canvas.drawBitmap(pattern, 0f, 0f, null)
+        val patternLeft = (combinedWidth - pattern.width) / 2f
+        val statsLeft = (combinedWidth - statsBmp.width) / 2f
+        canvas.drawBitmap(pattern, patternLeft, 0f, null)
         canvas.drawBitmap(statsBmp, statsLeft, pattern.height.toFloat(), null)
         statsBmp.recycle()
         pattern.recycle()
@@ -71,65 +74,123 @@ object Exporter {
 
     /**
      * 生成颜色统计 PNG：色块 + 色号 + 数量，按数量降序。
-     * @param width 输出宽度；拼接到大图下方时传与大图一致的宽度，内部按比例缩放字号
+     * 根据图纸/画布宽度自适应计算列数（多列网格排列），避免单列排版导致大图底部过度拉长与留白。
+     * @param width 输出宽度；拼接到大图下方时与大图等宽，内部自适应 1~6 列
      */
-    fun renderStatsBitmap(rows: List<ColorStatRow>, totalCount: Int, width: Int = 480): Bitmap {
-        val scale = width / 480f
-        val rowHeight = (64 * scale).toInt().coerceAtLeast(24)
-        val margin = (24 * scale).toInt()
-        val headerHeight = (96 * scale).toInt()
-        val titleSize = 40f * scale
-        val rowTextSize = 36f * scale
-        val swatchSize = (48 * scale).toInt()
-        val height = headerHeight + rows.size * rowHeight + (80 * scale).toInt()
-        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    fun renderStatsBitmap(rows: List<ColorStatRow>, totalCount: Int, width: Int = 800): Bitmap {
+        val safeWidth = maxOf(360, width)
+        val margin = (safeWidth * 0.03f).coerceIn(24f, 48f)
+        val availW = safeWidth - 2f * margin
+
+        // 每列理想宽度约 300~340px，由此计算自适应列数
+        val idealColW = 320f
+        val rawCols = (availW / idealColW).toInt().coerceAtLeast(1)
+        // 列数不应超过总颜色项数（例如只有 2 种颜色时最多 2 列）
+        val numCols = rawCols.coerceIn(1, maxOf(1, rows.size))
+
+        val numRows = if (rows.isEmpty()) 0 else (rows.size + numCols - 1) / numCols
+        val rowHeight = 44f
+        val headerHeight = 72f
+        val footerHeight = 44f
+        val swatchSize = 26f
+        val colWidth = availW / numCols.toFloat()
+
+        val height = maxOf(100, (headerHeight + numRows * rowHeight + footerHeight).toInt())
+        val bmp = Bitmap.createBitmap(safeWidth, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(Color.WHITE)
 
+        val topDividerPaint = Paint().apply {
+            color = 0xFFE0E0E0.toInt()
+            strokeWidth = 1.5f
+        }
+        val headerDividerPaint = Paint().apply {
+            color = 0xFFE8E8E8.toInt()
+            strokeWidth = 1f
+        }
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = titleSize
+            color = 0xFF222222.toInt()
+            textSize = 26f
             isFakeBoldText = true
         }
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = rowTextSize
+        val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF222222.toInt()
+            textSize = 21f
+            isFakeBoldText = true
+        }
+        val hexPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF666666.toInt()
+            textSize = 17f
+        }
+        val countPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF333333.toInt()
+            textSize = 20f
+            textAlign = Paint.Align.RIGHT
         }
         val swatchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.LTGRAY
+        val swatchBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x28000000.toInt()
             style = Paint.Style.STROKE
-            strokeWidth = 2f * scale
+            strokeWidth = 1f
         }
 
-        canvas.drawText("拼豆颜色统计（共 $totalCount 粒）", margin.toFloat(), (60 * scale), titlePaint)
+        // 顶部分隔线（与上方图纸产生清晰分界）
+        canvas.drawLine(0f, 0f, safeWidth.toFloat(), 0f, topDividerPaint)
 
+        // 标题与总计
+        val titleText = "拼豆颜色统计（共 ${rows.size} 色 · 合计 $totalCount 粒）"
+        canvas.drawText(titleText, margin, 42f, titlePaint)
+        canvas.drawLine(margin, headerHeight - 12f, safeWidth - margin, headerHeight - 12f, headerDividerPaint)
+
+        // 多列排列各颜色项（水平优先，便于横向扫视高频色）
         rows.forEachIndexed { index, row ->
-            val y = headerHeight + index * rowHeight
-            val swatchLeft = margin
-            val swatchTop = y + (8 * scale).toInt()
+            val r = index / numCols
+            val c = index % numCols
+            val cellLeft = margin + c * colWidth
+            val cellY = headerHeight + r * rowHeight
+
+            // 色块
+            val swatchLeft = cellLeft + 4f
+            val swatchTop = cellY + (rowHeight - swatchSize) / 2f
             swatchPaint.color = GridRenderer.parseHex(row.hex)
             canvas.drawRect(
-                swatchLeft.toFloat(), swatchTop.toFloat(),
-                (swatchLeft + swatchSize).toFloat(), (swatchTop + swatchSize).toFloat(),
+                swatchLeft, swatchTop,
+                swatchLeft + swatchSize, swatchTop + swatchSize,
                 swatchPaint
             )
             canvas.drawRect(
-                swatchLeft.toFloat(), swatchTop.toFloat(),
-                (swatchLeft + swatchSize).toFloat(), (swatchTop + swatchSize).toFloat(),
-                borderPaint
+                swatchLeft, swatchTop,
+                swatchLeft + swatchSize, swatchTop + swatchSize,
+                swatchBorderPaint
             )
-            canvas.drawText("${row.key}  ${row.hex}", (swatchLeft + swatchSize + 16 * scale), y + rowHeight * 0.66f, textPaint)
-            val countText = "${row.count}"
-            canvas.drawText(countText, (width - margin - textPaint.measureText(countText)), y + rowHeight * 0.66f, textPaint)
+
+            // 文字基线：居中对齐
+            val fontMetrics = keyPaint.fontMetrics
+            val baseline = cellY + (rowHeight - fontMetrics.ascent - fontMetrics.descent) / 2f
+
+            // 色号与 Hex
+            val keyLeft = swatchLeft + swatchSize + 10f
+            canvas.drawText(row.key, keyLeft, baseline, keyPaint)
+            val hexLeft = keyLeft + keyPaint.measureText("${row.key} ")
+            canvas.drawText(row.hex, hexLeft, baseline, hexPaint)
+
+            // 数量（右对齐于该列）
+            val countText = "${row.count} 粒"
+            val countRight = cellLeft + colWidth - 14f
+            canvas.drawText(countText, countRight, baseline, countPaint)
         }
 
+        // 底部落款
         val bottomText = "由拼豆图纸生成器导出"
-        val smallPaint = Paint(textPaint).apply { textSize = 26f * scale; color = Color.GRAY }
+        val smallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 17f
+            color = 0xFF999999.toInt()
+            textAlign = Paint.Align.RIGHT
+        }
         canvas.drawText(
             bottomText,
-            (width - margin - smallPaint.measureText(bottomText)),
-            (height - 40 * scale),
+            safeWidth - margin,
+            height - 16f,
             smallPaint
         )
         return bmp
