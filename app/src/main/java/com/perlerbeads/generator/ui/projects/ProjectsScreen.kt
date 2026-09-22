@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -41,6 +42,9 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectsScreen(vm: AppViewModel) {
+    // 每次进入刷新列表（保存/删除后也会自动反映）
+    LaunchedEffect(Unit) { vm.refreshProjects() }
+
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("我的项目") },

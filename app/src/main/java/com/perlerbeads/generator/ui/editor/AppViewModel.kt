@@ -149,7 +149,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshActivePalette()
-        refreshProjects()
+        // 注意：不要在 init 里调用 refreshProjects() —— projects 委托声明在类体后段，
+        // init 按声明顺序执行时会因委托未初始化而 NPE；项目列表在 ProjectsScreen 进入时刷新
     }
 
     // ---------- 色板 ----------
