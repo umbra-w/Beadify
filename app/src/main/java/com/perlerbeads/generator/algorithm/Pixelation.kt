@@ -48,11 +48,32 @@ fun calculatePixelGrid(
     maxColors: Int = 0,
     cleanupIslands: Boolean = false
 ): Array<Array<MappedPixel>> {
+    // 性能关键保护：如果原图分辨率远超拼豆网格所需（如 3000x4000 照片），
+    // 自适应下采样到高质量超采样尺寸（每个格子对应 3~4 个采样像素，上限 800px），
+    // 既能保留全部微小特征与边缘轮廓，又彻底避免 1200 万像素在低端 CPU 上的 GC 卡顿与转圈。
+    val maxInputDim = maxOf(bitmap.width, bitmap.height)
+    val maxGridDim = maxOf(n, m)
+    val targetMaxDim = (maxGridDim * 3).coerceIn(300, 800)
+
+    val (workBmp, needRecycle) = if (maxInputDim > targetMaxDim * 1.25f) {
+        val scale = targetMaxDim.toFloat() / maxInputDim
+        val targetW = Math.max(n, Math.round(bitmap.width * scale).toInt())
+        val targetH = Math.max(m, Math.round(bitmap.height * scale).toInt())
+        val scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+        scaled to (scaled !== bitmap)
+    } else {
+        bitmap to false
+    }
+
     val reps = Array(m) { arrayOfNulls<RgbColor>(n) }
-    val imgWidth = bitmap.width
-    val imgHeight = bitmap.height
+    val imgWidth = workBmp.width
+    val imgHeight = workBmp.height
     val fullImage = IntArray(imgWidth * imgHeight)
-    bitmap.getPixels(fullImage, 0, imgWidth, 0, 0, imgWidth, imgHeight)
+    workBmp.getPixels(fullImage, 0, imgWidth, 0, 0, imgWidth, imgHeight)
+
+    if (needRecycle && !workBmp.isRecycled) {
+        workBmp.recycle()
+    }
 
     val cellWidthOriginal = imgWidth.toDouble() / n
     val cellHeightOriginal = imgHeight.toDouble() / m
@@ -77,16 +98,36 @@ fun calculatePixelGrid(
         palette
     }
 
-    // 2. 映射量化（误差扩散抖动或最近邻）
+    // 2. 映射量化（误差扩散抖动或最近邻）：引入单次会话色板索引与代表色复用缓存
     var grid = if (dithering) {
         quantizeWithDithering(reps, activePalette, fallback)
     } else {
+        val paletteArray = activePalette.toTypedArray()
+        val paletteLabs = Array(activePalette.size) { ColorMath.rgbToOklab(activePalette[it].rgb) }
+        val repCache = HashMap<RgbColor, MappedPixel>()
+
         Array(m) { j ->
             Array(n) { i ->
-                reps[j][i]?.let { rep ->
-                    val closest = findClosestPaletteColor(rep, activePalette)
-                    MappedPixel(closest.key, closest.hex, false)
-                } ?: transparentColorData
+                val rep = reps[j][i]
+                if (rep == null) {
+                    transparentColorData
+                } else {
+                    repCache.getOrPut(rep) {
+                        val targetLab = ColorMath.rgbToOklab(rep)
+                        var minD2 = Double.MAX_VALUE
+                        var bestIdx = 0
+                        for (idx in paletteLabs.indices) {
+                            val d2 = targetLab.distanceSquared(paletteLabs[idx])
+                            if (d2 < minD2) {
+                                minD2 = d2
+                                bestIdx = idx
+                                if (d2 == 0.0) break
+                            }
+                        }
+                        val chosen = paletteArray[bestIdx]
+                        MappedPixel(chosen.key, chosen.hex, false)
+                    }
+                }
             }
         }
     }
@@ -165,35 +206,46 @@ private fun calculateCellRepresentativeColor(
     var gSum = 0L
     var bSum = 0L
     var pixelCount = 0
-    val colorCounts = HashMap<String, Int>()
-    var dominant: RgbColor? = null
+
+    // 单元格内自适应采样步长：每个格子最多采样 8x8 = 64 个点即可完美识别主色，消除过密采样的性能惩罚
+    val stepX = maxOf(1, width / 8)
+    val stepY = maxOf(1, height / 8)
+
+    val colorCounts = HashMap<Int, Int>()
+    var dominantKey: Int? = null
     var maxCount = 0
 
     val endX = startX + width
     val endY = startY + height
-    for (y in startY until endY) {
-        for (x in startX until endX) {
+    var y = startY
+    while (y < endY) {
+        var x = startX
+        while (x < endX) {
             val argb = data[y * imgWidth + x]
             val alpha = (argb ushr 24) and 0xFF
-            if (alpha < 128) continue
-            val r = (argb ushr 16) and 0xFF
-            val g = (argb ushr 8) and 0xFF
-            val b = argb and 0xFF
-            pixelCount++
-            if (mode == PixelationMode.AVERAGE) {
-                rSum += r
-                gSum += g
-                bSum += b
-            } else {
-                val key = "$r,$g,$b"
-                val c = (colorCounts[key] ?: 0) + 1
-                colorCounts[key] = c
-                if (c > maxCount) {
-                    maxCount = c
-                    dominant = RgbColor(r, g, b)
+            if (alpha >= 128) {
+                val r = (argb ushr 16) and 0xFF
+                val g = (argb ushr 8) and 0xFF
+                val b = argb and 0xFF
+                pixelCount++
+                if (mode == PixelationMode.AVERAGE) {
+                    rSum += r
+                    gSum += g
+                    bSum += b
+                } else {
+                    // 原生 Int 键，0 字符串分配与 0 装箱损耗
+                    val key = (r shl 16) or (g shl 8) or b
+                    val c = (colorCounts[key] ?: 0) + 1
+                    colorCounts[key] = c
+                    if (c > maxCount) {
+                        maxCount = c
+                        dominantKey = key
+                    }
                 }
             }
+            x += stepX
         }
+        y += stepY
     }
     if (pixelCount == 0) return null
     return if (mode == PixelationMode.AVERAGE) {
@@ -203,6 +255,11 @@ private fun calculateCellRepresentativeColor(
             Math.round(bSum.toDouble() / pixelCount).toInt()
         )
     } else {
-        dominant
+        dominantKey?.let {
+            val r = (it ushr 16) and 0xFF
+            val g = (it ushr 8) and 0xFF
+            val b = it and 0xFF
+            RgbColor(r, g, b)
+        }
     }
 }

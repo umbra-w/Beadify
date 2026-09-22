@@ -248,42 +248,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         processing = true
         viewModelScope.launch {
-            val result = withContext(Dispatchers.Default) {
-                val t1 = palette.firstOrNull { it.key == "T1" }
-                    ?: palette.firstOrNull { it.hex.uppercase() == "#FFFFFF" }
-                    ?: palette[0]
-                val n = settings.granularity
-                val aspect = bmp.height.toDouble() / bmp.width.toDouble()
-                val m = Math.max(1, Math.round(n * aspect).toInt())
-                // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动、受控色数与噪点清理）
-                val initial = calculatePixelGrid(
-                    bmp, n, m, palette, settings.mode, t1, settings.dithering,
-                    maxColors = settings.maxColors,
-                    cleanupIslands = settings.cleanupIslands
-                )
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    val t1 = palette.firstOrNull { it.key == "T1" }
+                        ?: palette.firstOrNull { it.hex.uppercase() == "#FFFFFF" }
+                        ?: palette[0]
+                    val n = settings.granularity
+                    val aspect = bmp.height.toDouble() / bmp.width.toDouble()
+                    val m = Math.max(1, Math.round(n * aspect).toInt())
+                    // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动、受控色数与噪点清理）
+                    val initial = calculatePixelGrid(
+                        bmp, n, m, palette, settings.mode, t1, settings.dithering,
+                        maxColors = settings.maxColors,
+                        cleanupIslands = settings.cleanupIslands
+                    )
 
-                val initialKeys = HashSet<String>()
-                for (row in initial) {
-                    for (cell in row) {
-                        if (cell.key != TRANSPARENT_KEY && !cell.isExternal) {
-                            initialKeys.add(cell.colorHex.uppercase())
+                    val initialKeys = HashSet<String>()
+                    for (row in initial) {
+                        for (cell in row) {
+                            if (cell.key != TRANSPARENT_KEY && !cell.isExternal) {
+                                initialKeys.add(cell.colorHex.uppercase())
+                            }
                         }
                     }
+                    GridData(n, m, initial, initialKeys, settings.gridShape)
                 }
-                GridData(n, m, initial, initialKeys, settings.gridShape)
+                gridData = result
+                // 圆形画板：用设置的覆盖范围滑块初始化圆框；编辑页手势会实时更新它
+                circleFrame = if (settings.gridShape == GridShape.CIRCLE) {
+                    circleGeometry(result.n, result.m, settings.circleOffsetX, settings.circleOffsetY)
+                } else {
+                    null
+                }
+                clearEditHistory()
+                recomputeStats()
+                selectedPaintColor = gridPalette.firstOrNull()
+                screen = Screen.Editor
+            } catch (e: Throwable) {
+                android.util.Log.e("AppViewModel", "generate failed", e)
+                toast = "生成图纸失败: ${e.message ?: "未知错误"}"
+            } finally {
+                processing = false
             }
-            gridData = result
-            // 圆形画板：用设置的覆盖范围滑块初始化圆框；编辑页手势会实时更新它
-            circleFrame = if (settings.gridShape == GridShape.CIRCLE) {
-                circleGeometry(result.n, result.m, settings.circleOffsetX, settings.circleOffsetY)
-            } else {
-                null
-            }
-            clearEditHistory()
-            recomputeStats()
-            selectedPaintColor = gridPalette.firstOrNull()
-            processing = false
-            screen = Screen.Editor
         }
     }
 
@@ -953,10 +959,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             BitmapFactory.decodeStream(it, null, bounds)
         }
         val maxDim = Math.max(bounds.outWidth, bounds.outHeight)
-        // 阶段7：把降采样阈值从 2000 提到 6000，避免像素化在 1/4 分辨率图上进行（丢细节、无法离线对拍）。
-        // 常见照片（≤6000px）按全分辨率解码；超大图仍有内存保护。
+        // 适度降采样阈值（2400px）：对于最大 200x200 的拼豆网格，2400px 提供了高达 12 倍的超采样密度，
+        // 既能保留全部细微色彩特征，又彻底避免了 1200 万像素直接解码造成的内存溢出与 GC 卡顿。
         var sample = 1
-        while (maxDim / sample > 6000) sample *= 2
+        while (maxDim / sample > 2400) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         return context.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, opts)
