@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.perlerbeads.generator.ui.editor.AppViewModel
 import com.perlerbeads.generator.navigation.Screen
@@ -70,14 +71,26 @@ fun HomeScreen(vm: AppViewModel) {
         Spacer(Modifier.height(80.dp))
 
         // 品牌区
-        Text("拼豆图纸生成器", style = MaterialTheme.typography.headlineLarge)
+        Text(
+            text = "Beadify",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "智能拼豆图纸生成器",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
         Spacer(Modifier.height(8.dp))
         Text(
-            "图片一键转拼豆图纸 · 颜色识别 · 自动合并 · 采购清单",
+            text = "图片一键转拼豆图纸 · 颜色识别 · 自动合并 · 采购清单",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(56.dp))
+        Spacer(Modifier.height(48.dp))
 
         // 导入图片
         Card(
