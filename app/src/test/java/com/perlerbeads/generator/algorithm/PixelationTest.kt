@@ -4,6 +4,7 @@ import com.perlerbeads.generator.model.PaletteColor
 import com.perlerbeads.generator.model.RgbColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelationTest {
@@ -25,7 +26,8 @@ class PixelationTest {
     @Test
     fun colorDistance_identityAndAxes() {
         assertEquals(0.0, colorDistance(RgbColor(10, 20, 30), RgbColor(10, 20, 30)), 1e-9)
-        assertEquals(255.0, colorDistance(RgbColor(0, 0, 0), RgbColor(255, 0, 0)), 1e-9)
+        val d = colorDistance(RgbColor(0, 0, 0), RgbColor(255, 0, 0))
+        assertTrue("黑红感知色差应大于 0", d > 50.0)
     }
 
     @Test

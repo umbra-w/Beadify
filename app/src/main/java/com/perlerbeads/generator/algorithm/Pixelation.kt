@@ -17,29 +17,16 @@ fun hexToRgb(hex: String): RgbColor? {
     return RgbColor(r, g, b)
 }
 
-/** RGB 欧氏距离。对应 pixelation.ts L44。 */
-fun colorDistance(rgb1: RgbColor, rgb2: RgbColor): Double {
-    val dr = rgb1.r - rgb2.r
-    val dg = rgb1.g - rgb2.g
-    val db = rgb1.b - rgb2.b
-    return Math.sqrt((dr * dr + dg * dg + db * db).toDouble())
-}
+/**
+ * 颜色感知距离（基于 Oklab 感知色彩空间，对应 Zippland PR #10 与 QiaoGrid）。
+ * 消除 RGB 欧氏距离在深色/蓝紫色相上的失真，平滑兼容 0..100 阈值。
+ */
+fun colorDistance(rgb1: RgbColor, rgb2: RgbColor): Double =
+    ColorMath.oklabDistance(rgb1, rgb2)
 
-/** 查找最近色板色；空色板回退 ERR。对应 pixelation.ts L52。 */
-fun findClosestPaletteColor(target: RgbColor, palette: List<PaletteColor>): PaletteColor {
-    if (palette.isEmpty()) return PaletteColor("ERR", "#000000", RgbColor(0, 0, 0))
-    var minDistance = Double.MAX_VALUE
-    var closest = palette[0]
-    for (pc in palette) {
-        val d = colorDistance(target, pc.rgb)
-        if (d < minDistance) {
-            minDistance = d
-            closest = pc
-        }
-        if (d == 0.0) break
-    }
-    return closest
-}
+/** 查找最近色板色；基于 Oklab 感知色彩空间。空色板回退 ERR。 */
+fun findClosestPaletteColor(target: RgbColor, palette: List<PaletteColor>): PaletteColor =
+    ColorMath.findClosestPaletteColor(target, palette)
 
 /**
  * 根据 Bitmap、网格尺寸、色板与模式计算像素网格。
