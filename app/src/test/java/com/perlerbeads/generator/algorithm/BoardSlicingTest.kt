@@ -106,4 +106,90 @@ class BoardSlicingTest {
         val g = GridData(4, 4, Array(4) { Array(4) { cell("A01", "#000000") } }, emptySet(), GridShape.CIRCLE)
         assertEquals(1, sliceBoards(g, 29).size)
     }
+
+    @Test
+    fun rangeCodecRoundTripAndEdgeCases() {
+        assertEquals("", encodeCellIndices(emptySet()))
+        assertEquals(emptySet<Int>(), decodeCellIndices(""))
+        assertEquals(emptySet<Int>(), decodeCellIndices("   "))
+
+        val set1 = setOf(5)
+        assertEquals("5", encodeCellIndices(set1))
+        assertEquals(set1, decodeCellIndices("5"))
+
+        val set2 = setOf(1, 2, 3, 4, 7, 10, 11, 12, 15)
+        val encoded2 = encodeCellIndices(set2)
+        assertEquals("1-4,7,10-12,15", encoded2)
+        assertEquals(set2, decodeCellIndices(encoded2))
+
+        // 包含倒序或脏数据也能健壮容错
+        val decodedDirty = decodeCellIndices(" 10-12, 7, 4-1 , abc, , 15 ")
+        assertEquals(setOf(1, 2, 3, 4, 7, 10, 11, 12, 15), decodedDirty)
+    }
+
+    @Test
+    fun gridContentKeyIndependentOfBoardSize() {
+        val g1 = gridOf(4, 4) { _, _ -> cell("A01", "#000000") }
+        val g2 = gridOf(4, 4) { _, _ -> cell("A01", "#000000") }
+        val g3 = gridOf(4, 4) { r, c -> if (r == 0 && c == 0) cell("B02", "#111111") else cell("A01", "#000000") }
+        assertEquals(gridContentKey(g1), gridContentKey(g2))
+        assertNotEquals(gridContentKey(g1), gridContentKey(g3))
+        assertTrue(gridContentKey(g1).startsWith("4x4_"))
+    }
+
+    @Test
+    fun cellAndColorCompletionTracking() {
+        // 4x4 网格，板尺寸 2x2（共 4 块板）
+        // (0,0)=A01, (0,1)=A01, (1,0)=B02, (1,1)=A01 -> 第 0 块板有 3 颗 A01，1 颗 B02
+        val g = gridOf(4, 4) { r, c ->
+            if (r == 1 && c == 0) cell("B02", "#111111") else cell("A01", "#000000")
+        }
+        val slices = sliceBoards(g, 2)
+        val slice0 = slices[0]
+        assertEquals(4, slice0.total)
+
+        var completed = emptySet<Int>()
+        assertEquals(0, sliceCompletedCount(g, slice0, completed))
+        assertEquals(0, colorCompletedCount(g, slice0, "A01", completed))
+        assertEquals(false, isBoardComplete(g, slice0, completed))
+
+        // 打勾 (0, 0)
+        completed = toggleCellCompletion(g, 0, 0, completed)
+        assertTrue(0 in completed)
+        assertEquals(1, sliceCompletedCount(g, slice0, completed))
+        assertEquals(1, colorCompletedCount(g, slice0, "A01", completed))
+        assertEquals(0, colorCompletedCount(g, slice0, "B02", completed))
+        assertEquals(false, isBoardComplete(g, slice0, completed))
+
+        // 再次打勾 (0, 0) 取消
+        completed = toggleCellCompletion(g, 0, 0, completed)
+        assertTrue(0 !in completed)
+        assertEquals(0, sliceCompletedCount(g, slice0, completed))
+
+        // 批量打勾色号 A01（第 0 块板有 3 颗：(0,0)=0, (0,1)=1, (1,1)=5）
+        completed = toggleColorCompletionOnSlice(g, slice0, "A01", completed)
+        assertEquals(3, sliceCompletedCount(g, slice0, completed))
+        assertEquals(3, colorCompletedCount(g, slice0, "A01", completed))
+        assertEquals(false, isBoardComplete(g, slice0, completed))
+
+        // 再次触发色号 A01，因为已全部打勾，应全部取消
+        val untoggled = toggleColorCompletionOnSlice(g, slice0, "A01", completed)
+        assertEquals(0, sliceCompletedCount(g, slice0, untoggled))
+
+        // 批量打勾全板
+        completed = toggleSliceCompletion(g, slice0, completed)
+        assertEquals(4, sliceCompletedCount(g, slice0, completed))
+        assertEquals(true, isBoardComplete(g, slice0, completed))
+
+        // 全板打勾后，updateCompletedBoards 应包含板 0
+        val completedBoardIndices = updateCompletedBoards(g, slices, completed)
+        assertEquals(setOf(0), completedBoardIndices)
+
+        // 再次触发全板，应清空该板
+        val cleared = toggleSliceCompletion(g, slice0, completed)
+        assertEquals(0, sliceCompletedCount(g, slice0, cleared))
+        assertEquals(false, isBoardComplete(g, slice0, cleared))
+        assertEquals(emptySet<Int>(), updateCompletedBoards(g, slices, cleared))
+    }
 }
+

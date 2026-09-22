@@ -88,6 +88,17 @@ class SettingsStore(context: Context) {
             ?.toSet()
             ?: emptySet()
 
+    /** 逐格跟做：保存已完成格子的全局平坦索引集合（压缩区间存储）。 */
+    fun saveCellProgress(key: String, completed: Set<Int>) {
+        prefs.edit().putString(KEY_CELL_PROGRESS_PREFIX + key, com.perlerbeads.generator.algorithm.encodeCellIndices(completed)).apply()
+    }
+
+    /** 逐格跟做：读取已完成格子的全局平坦索引集合。 */
+    fun loadCellProgress(key: String): Set<Int> =
+        prefs.getString(KEY_CELL_PROGRESS_PREFIX + key, null)?.let {
+            com.perlerbeads.generator.algorithm.decodeCellIndices(it)
+        } ?: emptySet()
+
     /** 读取色板勾选；从未保存过则返回 null（表示全量）。 */
     fun loadPaletteSelections(): Map<String, Boolean>? {
         val raw = prefs.getString(KEY_PALETTE, null) ?: return null
@@ -118,5 +129,6 @@ class SettingsStore(context: Context) {
         private const val KEY_AI_REQKEY = "ai_req_key"
         private const val KEY_BOARD_SIZE = "board_size"
         private const val KEY_BOARD_PROGRESS_PREFIX = "board_progress_"
+        private const val KEY_CELL_PROGRESS_PREFIX = "cell_progress_"
     }
 }

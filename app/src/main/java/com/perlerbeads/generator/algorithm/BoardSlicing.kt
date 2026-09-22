@@ -98,3 +98,225 @@ fun boardProgressKey(grid: GridData, boardSize: Int): String {
     val width = max(grid.n, 1)
     return "${grid.n}x${grid.m}_b${boardSize}_%08x".format(h) + "_w$width"
 }
+
+/** 网格内容指纹（不含板尺寸），用于跨板尺寸持久化逐格跟做进度。 */
+fun gridContentKey(grid: GridData): String {
+    var h = -312836211L
+    for (row in grid.cells) {
+        for (cell in row) {
+            h = h xor cell.key.hashCode().toLong()
+            h *= 0x1000193L
+        }
+    }
+    val width = max(grid.n, 1)
+    return "${grid.n}x${grid.m}_%08x".format(h) + "_w$width"
+}
+
+/** 把已完成格子的全局平坦索引集合（row * grid.n + col）压缩成区间串（例如 "1-5,10,12-16"）。 */
+fun encodeCellIndices(indices: Set<Int>): String {
+    if (indices.isEmpty()) return ""
+    val sorted = indices.toList().sorted()
+    val sb = StringBuilder()
+    var start = sorted[0]
+    var end = sorted[0]
+    for (i in 1 until sorted.size) {
+        val current = sorted[i]
+        if (current == end + 1) {
+            end = current
+        } else {
+            if (start == end) sb.append(start) else sb.append(start).append('-').append(end)
+            sb.append(',')
+            start = current
+            end = current
+        }
+    }
+    if (start == end) sb.append(start) else sb.append(start).append('-').append(end)
+    return sb.toString()
+}
+
+/** 把区间串解码回索引集合。 */
+fun decodeCellIndices(raw: String): Set<Int> {
+    if (raw.isBlank()) return emptySet()
+    val result = HashSet<Int>()
+    for (part in raw.split(',')) {
+        val trimmed = part.trim()
+        if (trimmed.isEmpty()) continue
+        val dashIdx = trimmed.indexOf('-')
+        if (dashIdx >= 0) {
+            val start = trimmed.substring(0, dashIdx).trim().toIntOrNull() ?: continue
+            val end = trimmed.substring(dashIdx + 1).trim().toIntOrNull() ?: continue
+            for (k in minOf(start, end)..maxOf(start, end)) {
+                result.add(k)
+            }
+        } else {
+            trimmed.toIntOrNull()?.let { result.add(it) }
+        }
+    }
+    return result
+}
+
+/** 获取本板所有有效实体豆的全局平坦索引集合。 */
+fun sliceValidCellIndices(
+    grid: GridData,
+    slice: BoardSlice,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): List<Int> {
+    val list = ArrayList<Int>()
+    for (r in 0 until slice.rows) {
+        val gr = slice.rowStart + r
+        for (c in 0 until slice.cols) {
+            val gc = slice.colStart + c
+            if (scope != null && !scope(gr, gc)) continue
+            val cell = grid.cells[gr][gc]
+            if (!cell.isExternal && cell.key != TRANSPARENT_KEY) {
+                list.add(gr * grid.n + gc)
+            }
+        }
+    }
+    return list
+}
+
+/** 获取本板某色号所有有效实体豆的全局平坦索引集合。 */
+fun sliceColorCellIndices(
+    grid: GridData,
+    slice: BoardSlice,
+    colorKey: String,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): List<Int> {
+    val list = ArrayList<Int>()
+    for (r in 0 until slice.rows) {
+        val gr = slice.rowStart + r
+        for (c in 0 until slice.cols) {
+            val gc = slice.colStart + c
+            if (scope != null && !scope(gr, gc)) continue
+            val cell = grid.cells[gr][gc]
+            if (!cell.isExternal && cell.key == colorKey) {
+                list.add(gr * grid.n + gc)
+            }
+        }
+    }
+    return list
+}
+
+/** 统计本板已拼颗粒数。 */
+fun sliceCompletedCount(
+    grid: GridData,
+    slice: BoardSlice,
+    completedCells: Set<Int>,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): Int {
+    var count = 0
+    for (r in 0 until slice.rows) {
+        val gr = slice.rowStart + r
+        for (c in 0 until slice.cols) {
+            val gc = slice.colStart + c
+            if (scope != null && !scope(gr, gc)) continue
+            val cell = grid.cells[gr][gc]
+            if (!cell.isExternal && cell.key != TRANSPARENT_KEY) {
+                if ((gr * grid.n + gc) in completedCells) {
+                    count++
+                }
+            }
+        }
+    }
+    return count
+}
+
+/** 统计本板指定色号已拼颗粒数。 */
+fun colorCompletedCount(
+    grid: GridData,
+    slice: BoardSlice,
+    colorKey: String,
+    completedCells: Set<Int>,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): Int {
+    var count = 0
+    for (r in 0 until slice.rows) {
+        val gr = slice.rowStart + r
+        for (c in 0 until slice.cols) {
+            val gc = slice.colStart + c
+            if (scope != null && !scope(gr, gc)) continue
+            val cell = grid.cells[gr][gc]
+            if (!cell.isExternal && cell.key == colorKey) {
+                if ((gr * grid.n + gc) in completedCells) {
+                    count++
+                }
+            }
+        }
+    }
+    return count
+}
+
+/** 判定本板是否全部拼完。若本板无需拼豆（total == 0），则也视为完成。 */
+fun isBoardComplete(
+    grid: GridData,
+    slice: BoardSlice,
+    completedCells: Set<Int>,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): Boolean {
+    if (slice.total == 0) return true
+    return sliceCompletedCount(grid, slice, completedCells, scope) >= slice.total
+}
+
+/** 切换指定格子的打勾/取消状态。 */
+fun toggleCellCompletion(
+    grid: GridData,
+    row: Int,
+    col: Int,
+    completedCells: Set<Int>
+): Set<Int> {
+    if (row !in 0 until grid.m || col !in 0 until grid.n) return completedCells
+    val idx = row * grid.n + col
+    return if (idx in completedCells) completedCells - idx else completedCells + idx
+}
+
+/** 批量切换某板上某色号的打勾状态：若已全勾则全部取消，否则全部补齐打勾。 */
+fun toggleColorCompletionOnSlice(
+    grid: GridData,
+    slice: BoardSlice,
+    colorKey: String,
+    completedCells: Set<Int>,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): Set<Int> {
+    val indices = sliceColorCellIndices(grid, slice, colorKey, scope)
+    if (indices.isEmpty()) return completedCells
+    val allDone = indices.all { it in completedCells }
+    return if (allDone) {
+        completedCells - indices.toSet()
+    } else {
+        completedCells + indices
+    }
+}
+
+/** 批量切换某板的打勾状态：若全板已完成则全部清空，否则全部标为完成。 */
+fun toggleSliceCompletion(
+    grid: GridData,
+    slice: BoardSlice,
+    completedCells: Set<Int>,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): Set<Int> {
+    val indices = sliceValidCellIndices(grid, slice, scope)
+    if (indices.isEmpty()) return completedCells
+    val allDone = indices.all { it in completedCells }
+    return if (allDone) {
+        completedCells - indices.toSet()
+    } else {
+        completedCells + indices
+    }
+}
+
+/** 根据当前已打勾格子集合，重新计算所有板的完成状态集合。 */
+fun updateCompletedBoards(
+    grid: GridData,
+    slices: List<BoardSlice>,
+    completedCells: Set<Int>,
+    scope: ((row: Int, col: Int) -> Boolean)? = null
+): Set<Int> {
+    val set = HashSet<Int>()
+    for (slice in slices) {
+        if (isBoardComplete(grid, slice, completedCells, scope)) {
+            set.add(slice.index)
+        }
+    }
+    return set
+}

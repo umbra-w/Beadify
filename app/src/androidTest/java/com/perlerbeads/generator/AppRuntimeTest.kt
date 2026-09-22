@@ -196,4 +196,82 @@ class AppRuntimeTest {
         assertEquals(g.cells[0][0].colorHex, restored.cells[0][0].colorHex)
         assertEquals(g.cells[5][3].colorHex, restored.cells[5][3].colorHex)
     }
+
+    @Test
+    fun boardSliceRenderer_rendersBitmapWithRulersAndSpotlight() {
+        val g = testGrid()
+        val slices = com.perlerbeads.generator.algorithm.sliceBoards(g, 4)
+        val slice = slices[0]
+        val completed = setOf(0, 1)
+
+        val bmpNormal = com.perlerbeads.generator.ui.board.BoardSliceRenderer.render(
+            g, slice, completed, spotlightKey = null
+        )
+        val expectedW = (com.perlerbeads.generator.ui.board.BoardSliceRenderer.RULER_LEFT + slice.cols * com.perlerbeads.generator.ui.board.BoardSliceRenderer.CELL_SIZE).toInt()
+        val expectedH = (com.perlerbeads.generator.ui.board.BoardSliceRenderer.RULER_TOP + slice.rows * com.perlerbeads.generator.ui.board.BoardSliceRenderer.CELL_SIZE).toInt()
+        assertEquals(expectedW, bmpNormal.width)
+        assertEquals(expectedH, bmpNormal.height)
+
+        val bmpSpotlight = com.perlerbeads.generator.ui.board.BoardSliceRenderer.render(
+            g, slice, completed, spotlightKey = "A01"
+        )
+        assertNotNull(bmpSpotlight)
+        assertEquals(expectedW, bmpSpotlight.width)
+    }
+
+    @Test
+    fun boardSliceRenderer_tapToCell_mapsAccurately() {
+        val rulerL = com.perlerbeads.generator.ui.board.BoardSliceRenderer.RULER_LEFT
+        val rulerT = com.perlerbeads.generator.ui.board.BoardSliceRenderer.RULER_TOP
+        val cellSize = com.perlerbeads.generator.ui.board.BoardSliceRenderer.CELL_SIZE
+
+        val bmpW = rulerL + 4 * cellSize
+        val bmpH = rulerT + 4 * cellSize
+        val containerW = 400f
+        val containerH = 400f
+
+        // 点击在左侧标尺上，应返回 null
+        val onRuler = com.perlerbeads.generator.ui.board.BoardSliceRenderer.tapToCell(
+            tapX = 10f, tapY = 200f,
+            containerW = containerW, containerH = containerH,
+            bmpW = bmpW, bmpH = bmpH,
+            zoom = 1f, offsetX = 0f, offsetY = 0f,
+            cols = 4, rows = 4
+        )
+        assertNull(onRuler)
+
+        // 在 1:1 无缩放居中下，计算第 (1, 2) 格的预期点击中心
+        val scaleFit = minOf(containerW / bmpW, containerH / bmpH)
+        val renderW = bmpW * scaleFit
+        val renderH = bmpH * scaleFit
+        val leftInContainer = (containerW - renderW) / 2f
+        val topInContainer = (containerH - renderH) / 2f
+
+        val cell12BmpX = rulerL + 2 * cellSize + cellSize / 2f
+        val cell12BmpY = rulerT + 1 * cellSize + cellSize / 2f
+        val tapX = leftInContainer + cell12BmpX * scaleFit
+        val tapY = topInContainer + cell12BmpY * scaleFit
+
+        val tapped = com.perlerbeads.generator.ui.board.BoardSliceRenderer.tapToCell(
+            tapX = tapX, tapY = tapY,
+            containerW = containerW, containerH = containerH,
+            bmpW = bmpW, bmpH = bmpH,
+            zoom = 1f, offsetX = 0f, offsetY = 0f,
+            cols = 4, rows = 4
+        )
+        assertNotNull(tapped)
+        assertEquals(1, tapped!!.first)  // row
+        assertEquals(2, tapped.second) // col
+    }
+
+    @Test
+    fun boardWork_cellProgressPersistence_worksInSettingsStore() {
+        val settings = com.perlerbeads.generator.data.SettingsStore(context)
+        val testKey = "test_run_progress_999"
+        val cells = setOf(1, 2, 3, 5, 8, 9, 10, 15)
+        settings.saveCellProgress(testKey, cells)
+        val loaded = settings.loadCellProgress(testKey)
+        assertEquals(cells, loaded)
+    }
 }
+

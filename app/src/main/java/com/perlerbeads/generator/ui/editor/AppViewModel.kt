@@ -14,9 +14,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.perlerbeads.generator.algorithm.ColorStats
 import com.perlerbeads.generator.algorithm.autoRemoveBackground
+import com.perlerbeads.generator.algorithm.BoardSlice
 import com.perlerbeads.generator.algorithm.boardCount
 import com.perlerbeads.generator.algorithm.boardProgressKey
 import com.perlerbeads.generator.algorithm.calculatePixelGrid
+import com.perlerbeads.generator.algorithm.gridContentKey
+import com.perlerbeads.generator.algorithm.isBoardComplete
+import com.perlerbeads.generator.algorithm.sliceBoards
+import com.perlerbeads.generator.algorithm.sliceValidCellIndices
+import com.perlerbeads.generator.algorithm.toggleCellCompletion
+import com.perlerbeads.generator.algorithm.toggleColorCompletionOnSlice
+import com.perlerbeads.generator.algorithm.toggleSliceCompletion
+import com.perlerbeads.generator.algorithm.updateCompletedBoards
 import com.perlerbeads.generator.algorithm.excludeColor
 import com.perlerbeads.generator.algorithm.floodFillErase
 import com.perlerbeads.generator.algorithm.hexToRgb
@@ -559,6 +568,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var completedBoards by mutableStateOf<Set<Int>>(emptySet())
         private set
 
+    var completedCells by mutableStateOf<Set<Int>>(emptySet())
+        private set
+
+    var spotlightKey by mutableStateOf<String?>(null)
+
     var currentBoard by mutableStateOf(0)
         private set
 
@@ -568,10 +582,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return circleFilter(g)
     }
 
+    /** 切换或清除当前高亮色号。若点击相同色号则取消高亮。 */
+    fun setSpotlight(key: String?) {
+        spotlightKey = if (spotlightKey == key) null else key
+    }
+
     /** 进入分板页：加载进度并定位到第一块未完成板。 */
     fun enterBoardWork() {
         val g = gridData ?: return
-        completedBoards = settings.loadBoardProgress(boardProgressKey(g, boardSize))
+        val scope = scopeFilter()
+        val loadedCells = settings.loadCellProgress(gridContentKey(g))
+        val slices = sliceBoards(g, boardSize, scope)
+
+        // 兼容迁移：若存在旧版已完成板的记录，则将这些板上的所有格子置为已完成并合并
+        val legacy = settings.loadBoardProgress(boardProgressKey(g, boardSize))
+        var mergedCells = loadedCells
+        if (legacy.isNotEmpty()) {
+            for (idx in legacy) {
+                val s = slices.getOrNull(idx)
+                if (s != null) {
+                    val validIndices = sliceValidCellIndices(g, s, scope)
+                    mergedCells = mergedCells + validIndices
+                }
+            }
+            if (mergedCells != loadedCells) {
+                settings.saveCellProgress(gridContentKey(g), mergedCells)
+            }
+        }
+
+        completedCells = mergedCells
+        val updatedBoards = updateCompletedBoards(g, slices, mergedCells, scope)
+        completedBoards = updatedBoards
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), updatedBoards)
+
+        spotlightKey = null
         currentBoard = firstIncompleteBoard(g)
         screen = Screen.BoardWork
     }
@@ -582,7 +626,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         boardSize = next
         settings.boardSize = next
         val g = gridData ?: return
-        completedBoards = settings.loadBoardProgress(boardProgressKey(g, boardSize))
+        val scope = scopeFilter()
+        val slices = sliceBoards(g, boardSize, scope)
+        val updatedBoards = updateCompletedBoards(g, slices, completedCells, scope)
+        completedBoards = updatedBoards
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), updatedBoards)
         currentBoard = firstIncompleteBoard(g)
     }
 
@@ -590,21 +638,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         currentBoard = index
     }
 
+    /** 切换单个格子的打勾状态。 */
+    fun toggleCellDone(row: Int, col: Int, slice: BoardSlice) {
+        val g = gridData ?: return
+        val scope = scopeFilter()
+        val next = toggleCellCompletion(g, row, col, completedCells)
+        completedCells = next
+        settings.saveCellProgress(gridContentKey(g), next)
+        val slices = sliceBoards(g, boardSize, scope)
+        val updatedBoards = updateCompletedBoards(g, slices, next, scope)
+        completedBoards = updatedBoards
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), updatedBoards)
+    }
+
+    /** 批量切换当前板上指定色号的打勾状态。 */
+    fun toggleColorDoneOnBoard(slice: BoardSlice, colorKey: String) {
+        val g = gridData ?: return
+        val scope = scopeFilter()
+        val next = toggleColorCompletionOnSlice(g, slice, colorKey, completedCells, scope)
+        completedCells = next
+        settings.saveCellProgress(gridContentKey(g), next)
+        val slices = sliceBoards(g, boardSize, scope)
+        val updatedBoards = updateCompletedBoards(g, slices, next, scope)
+        completedBoards = updatedBoards
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), updatedBoards)
+    }
+
     /** 标记/取消标记一块板完成；标记后自动跳到下一块未完成板。 */
     fun toggleBoardDone(index: Int) {
         val g = gridData ?: return
-        val next = if (index in completedBoards) completedBoards - index else completedBoards + index
-        completedBoards = next
-        settings.saveBoardProgress(boardProgressKey(g, boardSize), next)
-        if (index in next) {
+        val scope = scopeFilter()
+        val slices = sliceBoards(g, boardSize, scope)
+        val slice = slices.getOrNull(index) ?: return
+        val next = toggleSliceCompletion(g, slice, completedCells, scope)
+        completedCells = next
+        settings.saveCellProgress(gridContentKey(g), next)
+        val updatedBoards = updateCompletedBoards(g, slices, next, scope)
+        completedBoards = updatedBoards
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), updatedBoards)
+        if (index in updatedBoards) {
             currentBoard = firstIncompleteBoard(g)
         }
     }
 
+    /** 重置本板跟做进度（清空本板所有已勾选格子）。 */
+    fun resetSliceProgress(slice: BoardSlice) {
+        val g = gridData ?: return
+        val scope = scopeFilter()
+        val validIndices = sliceValidCellIndices(g, slice, scope).toSet()
+        val next = completedCells - validIndices
+        completedCells = next
+        settings.saveCellProgress(gridContentKey(g), next)
+        val slices = sliceBoards(g, boardSize, scope)
+        val updatedBoards = updateCompletedBoards(g, slices, next, scope)
+        completedBoards = updatedBoards
+        settings.saveBoardProgress(boardProgressKey(g, boardSize), updatedBoards)
+    }
+
     private fun firstIncompleteBoard(g: GridData): Int {
-        val total = boardCount(g.n, g.m, boardSize)
-        if (total <= 0) return 0
-        return (0 until total).firstOrNull { it !in completedBoards } ?: total - 1
+        val scope = scopeFilter()
+        val slices = sliceBoards(g, boardSize, scope)
+        if (slices.isEmpty()) return 0
+        return slices.firstOrNull { it.index !in completedBoards }?.index ?: slices.lastIndex
     }
 
     // ---------- 文字拼豆 ----------
