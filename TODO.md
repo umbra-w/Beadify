@@ -1,6 +1,8 @@
 # Beadify 迭代计划与待办清单 (TODO List)
 
-## 待实现功能 (Pending Features)
+## 待实现功能与优化 (Pending Features & Enhancements)
+
+---
 
 ### 1. 高对比度网格区分线设置 (Grid Interval & Color Accent Lines)
 - **需求背景**：
@@ -18,3 +20,41 @@
   - [ ] **导出弹窗交互 (`ExportDialog.kt`)**：新增网格辅助线分段选择器（关 / 5格 / 10格）与对比色色卡切换；
   - [ ] **渲染引擎适配 (`GridRenderer.kt`)**：参数化步长与线宽/颜色，导出图纸与 PDF 同步生效；
   - [ ] **实时编辑画布适配 (`EditorScreen.kt`)**：在可视范围内同步绘制选定间隔的彩色区分线，编辑与对照时更清晰。
+
+---
+
+### 2. 相似颜色合并阈值调节 (Color Similarity Merge Threshold)
+- **需求背景**：
+  - 网页端（`perler-beads-ai`）提供了「颜色合并阈值 (0-100)」设置项，能够有效减少拼豆成品中微小的相近色种。
+  - **与现有色数控制 (Max Colors) 的互补价值**：
+    - `Max Colors`（中位切割）是全局硬性卡死“最多 N 色”，适合严格限制总采购色种的场景；
+    - `Similarity Threshold`（相似合并）则是柔性合并：画面中如果存在色差小于阈值的微差色（如 3 种极近的浅肤色或阴影灰），自动将低频色并入高频主色，无需强制卡死全局总色数，保留自然色彩分布的同时大幅消除多余散色，非常贴合手作采购需求。
+- **对标实现 (Web 原型参考)**：
+  - `src/app/page.tsx` 中的全局颜色合并逻辑：
+    1. 统计当前图纸全部颜色使用频次并降序排列；
+    2. 从高频色向低频色遍历，计算颜色距离；
+    3. 若两色距离低于设定阈值，则将低频色折叠替换为高频色，并将其标记为已替换。
+- **Android 端落地方案设计**：
+  - [ ] **数据与算法扩展 (`ColorQuantizer.kt` / `Pixelation.kt`)**：
+    - 新增基于 Oklab / CIEDE2000 色差的相似色合并函数 `mergeSimilarColors(grid, threshold)`；
+    - 按像素出现频次排序，阈值范围内自动合并低频色到高频色；
+  - [ ] **设置页交互 (`SettingsScreen.kt`)**：
+    - 在「像素化设置」中新增「相似颜色合并阈值」滑块/输入框（范围 0~60，默认可设为 0 或推荐值 15）；
+  - [ ] **性能保护**：在低分辨率网格完成映射后进行 O(K²) 颜色查表合并，耗时 < 5ms，零性能损耗。
+
+---
+
+### 3. 原生沉浸式边缘到边缘 (Edge-to-Edge) 与状态栏泛白修复
+- **问题现象与原因分析**：
+  - 现象：在 Android 10~14 真机（如 Xiaomi Redmi 13C / MIUI / HyperOS）上启动应用时，顶部系统状态栏出现一层发白发蒙的半透明蒙层（Scrim），无法实现现代原生 App 那样与界面背景浑然一体的通透纯净效果。
+  - 原因：
+    1. `MainActivity.kt` 尚未引入 AndroidX 标准的 `enableEdgeToEdge()` API；
+    2. `themes.xml` 使用了旧版 `android:Theme.Material.Light.NoActionBar`，未启用现代 Material 3 Window 标志，系统在未知状态栏文字颜色安全性时自动叠加了白底保护蒙层；
+    3. 页面未充分适配 `WindowInsets` / `statusBarsPadding()`。
+- **技术落地方案设计**：
+  - [ ] **Activity 接入现代沉浸式**：在 `MainActivity.onCreate()` 中调用 `enableEdgeToEdge()`；
+  - [ ] **状态栏图标亮暗自适应**：
+    - 亮色主题下配置状态栏图标为深色（Dark Icons），背景完全透明（零白色 Scrim）；
+    - 暗色主题下配置状态栏图标为浅色（Light Icons）；
+  - [ ] **顶栏安全边距处理 (`WindowInsets`)**：
+    - 针对 `HomeScreen`、`SettingsScreen`、`EditorScreen` 等界面的顶栏或根容器增加 `statusBarsPadding()` 与 `navigationBarsPadding()`，确保界面内容不被前摄挖孔遮挡，同时状态栏背景 100% 透明无色差。
