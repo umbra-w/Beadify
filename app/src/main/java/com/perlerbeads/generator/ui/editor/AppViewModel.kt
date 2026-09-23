@@ -1000,7 +1000,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bytes = PdfExporter.buildPatternPdf(
-                        g, circleFrame, statRows(), totalBeadCount, pitch
+                        g, circleFrame, statRows(), totalBeadCount, pitch,
+                        gridInterval = settings.gridInterval,
+                        gridLineColorHex = settings.gridLineColorHex
                     )
                     Exporter.savePdfToDownloads(app, bytes, "拼豆图纸_${g.n}x${g.m}_${pitch.mm}mm.pdf")
                 }

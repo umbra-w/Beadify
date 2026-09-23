@@ -46,7 +46,9 @@ object PdfExporter {
         circle: CircleGeometry?,
         stats: List<ColorStatRow>,
         totalCount: Int,
-        pitch: BeadPitch = BeadPitch.MINI_2_6
+        pitch: BeadPitch = BeadPitch.MINI_2_6,
+        gridInterval: Int = 10,
+        gridLineColorHex: String = "#555555"
     ): ByteArray {
         val cellPt = pitch.cellPt
         val (colsPerPage, rowsPerPage) = pageCapacity(pitch)
@@ -55,6 +57,7 @@ object PdfExporter {
 
         val scope: ((Int, Int) -> Boolean)? = circle?.let { geo -> { r: Int, c: Int -> geo.contains(r, c) } }
         val pageInfoDrawn = "${grid.n}×${grid.m}"
+        val gridLineColor = GridRenderer.parseHex(gridLineColorHex)
 
         tiles.forEach { tile ->
             val pageInfo = PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, tile.index + 1).create()
@@ -71,16 +74,19 @@ object PdfExporter {
             }
             val subGrid = GridData(tile.cols, tile.rows, subCells, emptySet(), GridShape.SQUARE)
 
-            // 以 3× 渲染位图（保证 1:1 打印高清锐利），再缩放贴到页面上
-            val renderPx = 3
+            // 按 300 DPI 印刷级标准渲染切片位图（1 pt = 300/72 ≈ 4.167 px）
+            // 2.6mm 单格 ~31px，5.0mm 单格 ~59px，保证打印与放大查看时色号文字、边框与粗分界线极其锐利
+            val renderCellPx = maxOf(24, kotlin.math.round(cellPt * (300f / 72f)).toInt())
             val tileBmp = GridRenderer.render(
                 subGrid,
-                cellSize = renderPx,
+                cellSize = renderCellPx,
                 showBorders = true,
                 showKeys = true,
                 hideWhiteKeys = true,
                 mirror = false,
-                externalColor = Color.WHITE
+                externalColor = Color.WHITE,
+                gridInterval = gridInterval,
+                gridLineColor = gridLineColor
             )
 
             val title = "拼豆图纸 $pageInfoDrawn [${pitch.label} 1:1 实物比例]  第 ${tile.index + 1}/${tiles.size} 页" +

@@ -9,8 +9,10 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,10 +23,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -64,6 +68,7 @@ fun CropScreen(vm: AppViewModel) {
     val bmp = vm.bitmap ?: return
 
     var rect by remember(bmp) { mutableStateOf(Rect(0.05f, 0.05f, 0.95f, 0.95f)) }
+    var selectedRatio by remember { mutableStateOf(CropAspectRatio.FREE) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
     val handleTouchPx = with(density) { 48.dp.toPx() }
@@ -79,6 +84,28 @@ fun CropScreen(vm: AppViewModel) {
                 TextButton(onClick = { vm.goHome() }) { Text("取消") }
             }
         )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CropAspectRatio.entries.forEach { ratio ->
+                FilterChip(
+                    selected = selectedRatio == ratio,
+                    onClick = {
+                        if (selectedRatio != ratio) {
+                            selectedRatio = ratio
+                            val imgAspect = if (bmp.height > 0) bmp.width.toFloat() / bmp.height.toFloat() else 1f
+                            rect = computeFittedRect(rect, ratio.ratio, imgAspect)
+                        }
+                    },
+                    label = { Text(ratio.label) }
+                )
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -143,7 +170,7 @@ fun CropScreen(vm: AppViewModel) {
                     modifier = Modifier
                         .fillMaxSize()
                         .transformable(fallbackState)
-                        .pointerInput(containerSize, bmp) {
+                        .pointerInput(containerSize, bmp, selectedRatio) {
                             val slopPx = viewConfiguration.touchSlop
                             val doubleTapTimeout = viewConfiguration.doubleTapTimeoutMillis
                             // 双击检测跨手势记忆
@@ -262,14 +289,17 @@ fun CropScreen(vm: AppViewModel) {
                                         val dyn = (change.position.y - last.y) / (baseH * imgZoom)
                                         last = change.position
                                         if (dxn.isFinite() && dyn.isFinite()) {
-                                            rect = adjustRect(rect, rectMode, dxn, dyn)
+                                            rect = adjustRectWithAspect(
+                                                rect, rectMode, dxn, dyn,
+                                                selectedRatio.ratio, imgAspect, MIN_RECT
+                                            )
                                         }
                                     } else if (mode == 3) {
                                         val cx = normX(change.position.x)
                                         val cy = normY(change.position.y)
-                                        rect = Rect(
-                                            min(anchor.x, cx), min(anchor.y, cy),
-                                            max(anchor.x, cx), max(anchor.y, cy)
+                                        rect = createNewSelectionWithAspect(
+                                            anchor, Offset(cx, cy),
+                                            selectedRatio.ratio, imgAspect
                                         )
                                         last = change.position
                                     }
@@ -361,29 +391,6 @@ private fun clampPan(
     return Offset(pan.x.coerceIn(minX, maxX), pan.y.coerceIn(minY, maxY))
 }
 
-private fun adjustRect(rect: Rect, mode: Int, dxn: Float, dyn: Float): Rect {
-    if (!dxn.isFinite() || !dyn.isFinite()) return rect
-    return when (mode) {
-        1 -> {
-            var l = rect.left + dxn; var t = rect.top + dyn
-            var r = rect.right + dxn; var b = rect.bottom + dyn
-            if (l < 0f) { r -= l; l = 0f }
-            if (r > 1f) { l -= (r - 1f); r = 1f }
-            if (t < 0f) { b -= t; t = 0f }
-            if (b > 1f) { t -= (b - 1f); b = 1f }
-            Rect(l, t, r, b)
-        }
-        2 -> Rect(max(0f, min(rect.right - MIN_RECT, rect.left + dxn)), max(0f, min(rect.bottom - MIN_RECT, rect.top + dyn)), rect.right, rect.bottom)
-        3 -> Rect(rect.left, max(0f, min(rect.bottom - MIN_RECT, rect.top + dyn)), min(1f, max(rect.left + MIN_RECT, rect.right + dxn)), rect.bottom)
-        4 -> Rect(max(0f, min(rect.right - MIN_RECT, rect.left + dxn)), rect.top, rect.right, min(1f, max(rect.top + MIN_RECT, rect.bottom + dyn)))
-        5 -> Rect(rect.left, rect.top, min(1f, max(rect.left + MIN_RECT, rect.right + dxn)), min(1f, max(rect.top + MIN_RECT, rect.bottom + dyn)))
-        6 -> Rect(rect.left, max(0f, min(rect.bottom - MIN_RECT, rect.top + dyn)), rect.right, rect.bottom)
-        7 -> Rect(rect.left, rect.top, rect.right, min(1f, max(rect.top + MIN_RECT, rect.bottom + dyn)))
-        8 -> Rect(max(0f, min(rect.right - MIN_RECT, rect.left + dxn)), rect.top, rect.right, rect.bottom)
-        9 -> Rect(rect.left, rect.top, min(1f, max(rect.left + MIN_RECT, rect.right + dxn)), rect.bottom)
-        else -> rect
-    }
-}
 
 private fun detectHandleMode(x: Float, y: Float, left: Float, top: Float, right: Float, bottom: Float, tol: Float): Int {
     if (!x.isFinite() || !y.isFinite()) return 0
