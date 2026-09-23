@@ -10,3 +10,5 @@ captures/
 .cxx/
 release/
 *.apk
+test_real_photo.jpg
+*.jpg
