@@ -146,6 +146,21 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_CLEANUP_ISLANDS, false)
         set(v) { prefs.edit().putBoolean(KEY_CLEANUP_ISLANDS, v).apply() }
 
+    /** 相似颜色合并阈值 (0=不合并, 1..60，推荐 15)。 */
+    var similarityThreshold: Int
+        get() = prefs.getInt(KEY_SIMILARITY_THRESHOLD, 0)
+        set(v) { prefs.edit().putInt(KEY_SIMILARITY_THRESHOLD, v.coerceIn(0, 100)).apply() }
+
+    /** 网格辅助线间隔 (0=不显示, 5, 10)。默认 10。 */
+    var gridInterval: Int
+        get() = prefs.getInt(KEY_GRID_INTERVAL, 10)
+        set(v) { prefs.edit().putInt(KEY_GRID_INTERVAL, v).apply() }
+
+    /** 网格辅助线颜色 hex，默认深灰 #555555。 */
+    var gridLineColorHex: String
+        get() = prefs.getString(KEY_GRID_LINE_COLOR, "#555555") ?: "#555555"
+        set(v) { prefs.edit().putString(KEY_GRID_LINE_COLOR, v).apply() }
+
     companion object {
         private const val KEY_COLOR_SYSTEM = "color_system"
         private const val KEY_BEAD_BRAND = "bead_brand"
@@ -165,5 +180,8 @@ class SettingsStore(context: Context) {
         private const val KEY_CELL_PROGRESS_PREFIX = "cell_progress_"
         private const val KEY_MAX_COLORS = "max_colors"
         private const val KEY_CLEANUP_ISLANDS = "cleanup_islands"
+        private const val KEY_SIMILARITY_THRESHOLD = "similarity_threshold"
+        private const val KEY_GRID_INTERVAL = "grid_interval"
+        private const val KEY_GRID_LINE_COLOR = "grid_line_color"
     }
 }

@@ -39,17 +39,22 @@ object Exporter {
         totalCount: Int,
         hideWhite: Boolean,
         mirror: Boolean,
-        attachStats: Boolean
+        attachStats: Boolean,
+        gridInterval: Int = 10,
+        gridLineColorHex: String = "#555555"
     ): Bitmap {
         val budget = if (attachStats) 12_000_000f else 18_000_000f
         val cellByArea = kotlin.math.sqrt(budget / (grid.n * grid.m)).toInt()
         val gridCell = cellByArea.coerceIn(16, 48)
         val circleCell = circle?.let { (4096f / (2f * it.radius)).toInt() } ?: Int.MAX_VALUE
         val cell = maxOf(4, minOf(48, minOf(gridCell, circleCell)))
+        val lineCol = GridRenderer.parseHex(gridLineColorHex)
         val pattern = GridRenderer.render(
             grid, cell, showBorders = true, showKeys = true,
             hideWhiteKeys = hideWhite, mirror = mirror,
-            circle = circle
+            circle = circle,
+            gridInterval = gridInterval,
+            gridLineColor = lineCol
         )
         if (!attachStats) return pattern
 

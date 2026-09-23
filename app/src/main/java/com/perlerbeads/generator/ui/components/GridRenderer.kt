@@ -34,13 +34,16 @@ object GridRenderer {
         hideWhiteKeys: Boolean = true,
         circleOffsetX: Float = 0.5f,
         circleOffsetY: Float = 0.5f,
-        circle: com.perlerbeads.generator.model.CircleGeometry? = null
+        circle: com.perlerbeads.generator.model.CircleGeometry? = null,
+        gridInterval: Int = 10,
+        gridLineColor: Int = 0xCC333333.toInt()
     ): Bitmap {
         val maxEdge = maxOf(grid.n, grid.m)
         val cellSize = maxOf(2, minOf(32, maxDim / maxEdge))
         return render(
             grid, cellSize, showBorders, showKeys, hideWhiteKeys,
-            circleOffsetX, circleOffsetY, mirror = false, circle = circle
+            circleOffsetX, circleOffsetY, mirror = false, circle = circle,
+            gridInterval = gridInterval, gridLineColor = gridLineColor
         )
     }
 
@@ -49,6 +52,8 @@ object GridRenderer {
      * @param circle 圆形画板几何（网格坐标系）。null 时由 circleOffsetX/Y 推导。
      *               编辑页双指调整后的圆框应传入此参数，保证导出所见即所得。
      * @param externalColor external/透明格子的填充色（应用内浅灰，打印可传白色）
+     * @param gridInterval 网格粗线分界间隔（0=关闭，5=每5格，10=每10格）
+     * @param gridLineColor 网格粗线分界线颜色 ARGB
      */
     fun render(
         grid: GridData,
@@ -60,7 +65,9 @@ object GridRenderer {
         circleOffsetY: Float = 0.5f,
         mirror: Boolean = false,
         circle: com.perlerbeads.generator.model.CircleGeometry? = null,
-        externalColor: Int = EXTERNAL_COLOR
+        externalColor: Int = EXTERNAL_COLOR,
+        gridInterval: Int = 10,
+        gridLineColor: Int = 0xCC333333.toInt()
     ): Bitmap {
         val gridW = grid.n * cellSize
         val gridH = grid.m * cellSize
@@ -160,17 +167,17 @@ object GridRenderer {
             }
         }
 
-        // 每 10 格一条加粗计数线，便于数格子（圆形模式随圆裁剪）
-        if (showBorders) {
+        // 粗线计数分界线，便于数格子（圆形模式随圆裁剪）
+        if (showBorders && gridInterval > 0) {
             val boldLine = Paint().apply {
-                color = 0xCC333333.toInt()
+                color = gridLineColor
                 style = Paint.Style.STROKE
                 strokeWidth = maxOf(2f, cellSize * 0.1f)
             }
-            for (c in 0..grid.n step 10) {
+            for (c in 0..grid.n step gridInterval) {
                 drawCanvas.drawLine((c * cellSize).toFloat(), 0f, (c * cellSize).toFloat(), gridH.toFloat(), boldLine)
             }
-            for (r in 0..grid.m step 10) {
+            for (r in 0..grid.m step gridInterval) {
                 drawCanvas.drawLine(0f, (r * cellSize).toFloat(), gridW.toFloat(), (r * cellSize).toFloat(), boldLine)
             }
         }

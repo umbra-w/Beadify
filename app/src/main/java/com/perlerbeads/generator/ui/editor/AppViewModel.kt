@@ -332,11 +332,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val n = settings.granularity
                     val aspect = bmp.height.toDouble() / bmp.width.toDouble()
                     val m = Math.max(1, Math.round(n * aspect).toInt())
-                    // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动、受控色数与噪点清理）
+                    // calculatePixelGrid 内部完成 下采样 + RGB距离映射（可选 FS 抖动、受控色数、相似色合并与噪点清理）
                     val initial = calculatePixelGrid(
                         bmp, n, m, palette, settings.mode, t1, settings.dithering,
                         maxColors = settings.maxColors,
-                        cleanupIslands = settings.cleanupIslands
+                        cleanupIslands = settings.cleanupIslands,
+                        similarityThreshold = settings.similarityThreshold
                     )
 
                     val initialKeys = HashSet<String>()
@@ -955,7 +956,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun exportPatternPng(hideWhite: Boolean, mirror: Boolean, attachStats: Boolean) {
+    fun exportPatternPng(
+        hideWhite: Boolean,
+        mirror: Boolean,
+        attachStats: Boolean,
+        gridInterval: Int = settings.gridInterval,
+        gridLineColorHex: String = settings.gridLineColorHex
+    ) {
         val g = gridData ?: run { toast = "请先生成图纸"; return }
         if (exporting) return
         exporting = true
@@ -966,7 +973,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching {
                     val bmp = Exporter.renderPatternBitmap(
                         g, circleFrame, statRows(), totalBeadCount,
-                        hideWhite, mirror, attachStats
+                        hideWhite, mirror, attachStats,
+                        gridInterval = gridInterval,
+                        gridLineColorHex = gridLineColorHex
                     )
                     Exporter.savePngToPictures(app, bmp, "拼豆图纸_${g.n}x${g.m}.png")
                 }

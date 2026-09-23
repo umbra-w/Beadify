@@ -21,14 +21,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
@@ -212,7 +216,11 @@ fun EditorScreen(vm: AppViewModel) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+        ) {
             TopAppBar(
                 title = {
                     // 长尺寸标题缩小一号，避免顶栏截断
@@ -435,11 +443,12 @@ fun EditorScreen(vm: AppViewModel) {
                                 }
                             }
                             // 网格线：格子够大才画，屏幕空间恒定 1px —— 放大不会出现粗白线
+                            val left = ox + colStart * cell
+                            val right = ox + (colEnd + 1) * cell
+                            val top = oy + rowStart * cell
+                            val bottom = oy + (rowEnd + 1) * cell
+
                             if (cell >= 8f) {
-                                val left = ox + colStart * cell
-                                val right = ox + (colEnd + 1) * cell
-                                val top = oy + rowStart * cell
-                                val bottom = oy + (rowEnd + 1) * cell
                                 for (c in colStart..colEnd + 1) {
                                     val x = ox + c * cell
                                     drawLine(GRID_LINE_COLOR, Offset(x, top), Offset(x, bottom), 1f)
@@ -447,6 +456,26 @@ fun EditorScreen(vm: AppViewModel) {
                                 for (r in rowStart..rowEnd + 1) {
                                     val y = oy + r * cell
                                     drawLine(GRID_LINE_COLOR, Offset(left, y), Offset(right, y), 1f)
+                                }
+                            }
+
+                            // 粗线计数分界线（5/10 格）：便于数格子，支持自选颜色
+                            val gridInterval = vm.settings.gridInterval
+                            if (gridInterval > 0 && cell >= 4f) {
+                                val intervalColor = Color(GridRenderer.parseHex(vm.settings.gridLineColorHex))
+                                val firstC = (colStart / gridInterval) * gridInterval
+                                for (c in firstC..(colEnd + 1) step gridInterval) {
+                                    if (c in 0..grid.n) {
+                                        val x = ox + c * cell
+                                        drawLine(intervalColor, Offset(x, top), Offset(x, bottom), 2f)
+                                    }
+                                }
+                                val firstR = (rowStart / gridInterval) * gridInterval
+                                for (r in firstR..(rowEnd + 1) step gridInterval) {
+                                    if (r in 0..grid.m) {
+                                        val y = oy + r * cell
+                                        drawLine(intervalColor, Offset(left, y), Offset(right, y), 2f)
+                                    }
                                 }
                             }
                         }
@@ -697,11 +726,15 @@ fun EditorScreen(vm: AppViewModel) {
     if (showExport) {
         ExportDialog(
             initialPitch = vm.settings.pdfBeadPitch,
+            initialGridInterval = vm.settings.gridInterval,
+            initialGridLineColorHex = vm.settings.gridLineColorHex,
             onDismiss = { showExport = false },
-            onPattern = { hideWhite, mirror, attachStats ->
+            onPattern = { hideWhite, mirror, attachStats, gridInterval, gridLineColorHex ->
                 showExport = false
+                vm.settings.gridInterval = gridInterval
+                vm.settings.gridLineColorHex = gridLineColorHex
                 // 导出走 VM 后台线程（渲染大图在主线程会卡顿/OOM），完成后 toast 提示
-                vm.exportPatternPng(hideWhite, mirror, attachStats)
+                vm.exportPatternPng(hideWhite, mirror, attachStats, gridInterval, gridLineColorHex)
             },
             onPdf = { pitch ->
                 showExport = false
@@ -1190,8 +1223,10 @@ private fun SubstitutionDialog(
 @Composable
 private fun ExportDialog(
     initialPitch: com.perlerbeads.generator.model.BeadPitch,
+    initialGridInterval: Int,
+    initialGridLineColorHex: String,
     onDismiss: () -> Unit,
-    onPattern: (hideWhite: Boolean, mirror: Boolean, attachStats: Boolean) -> Unit,
+    onPattern: (hideWhite: Boolean, mirror: Boolean, attachStats: Boolean, gridInterval: Int, gridLineColorHex: String) -> Unit,
     onPdf: (pitch: com.perlerbeads.generator.model.BeadPitch) -> Unit,
     onStats: () -> Unit,
     onList: () -> Unit,
@@ -1201,6 +1236,17 @@ private fun ExportDialog(
     var mirror by remember { mutableStateOf(false) }
     var attachStats by remember { mutableStateOf(true) }
     var pitch by remember { mutableStateOf(initialPitch) }
+    var gridInterval by remember { mutableIntStateOf(initialGridInterval) }
+    var gridLineColorHex by remember { mutableStateOf(initialGridLineColorHex) }
+
+    val accentColors = listOf(
+        "#555555" to "深灰",
+        "#FF0000" to "红色",
+        "#0000FF" to "蓝色",
+        "#008000" to "绿色",
+        "#800080" to "紫色",
+        "#FFA500" to "橙色"
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1209,7 +1255,7 @@ private fun ExportDialog(
             Column {
                 FilterChip(
                     selected = false,
-                    onClick = { onPattern(hideWhite, mirror, attachStats) },
+                    onClick = { onPattern(hideWhite, mirror, attachStats, gridInterval, gridLineColorHex) },
                     label = { Text("带 Key 图纸 PNG") }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -1252,6 +1298,48 @@ private fun ExportDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = mirror, onCheckedChange = { mirror = it })
                     Text("水平镜像图纸（色号文字不镜像）", style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("网格辅助线:", style = MaterialTheme.typography.labelSmall)
+                    listOf(0 to "关闭", 5 to "每5格", 10 to "每10格").forEach { (interval, label) ->
+                        FilterChip(
+                            selected = gridInterval == interval,
+                            onClick = { gridInterval = interval },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+                if (gridInterval > 0) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("分界线颜色:", style = MaterialTheme.typography.labelSmall)
+                        accentColors.forEach { (hex, _) ->
+                            val color = Color(GridRenderer.parseHex(hex))
+                            val isSelected = gridLineColorHex.equals(hex, ignoreCase = true)
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        width = if (isSelected) 2.5.dp else 1.dp,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { gridLineColorHex = hex }
+                            )
+                        }
+                    }
                 }
             }
         },

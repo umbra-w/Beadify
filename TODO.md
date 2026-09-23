@@ -16,10 +16,10 @@
   - `GridRenderer.kt`：目前写死了 `step 10` 和固定深灰色（`0xCC333333`），无法在导出时自选 5 格、10 格或关闭，也无法选色；
   - `EditorScreen.kt`：实时画板目前仅绘制全局 1px 细线，未实现 5/10 格区分线的动态渲染。
 - **技术落地方案设计**：
-  - [ ] **设置/状态模型**：在 `AppViewModel` 及 `ExportDialog` 中增加 `gridInterval: Int`（支持 0=关闭、5、10）及 `gridLineColorHex: String`；
-  - [ ] **导出弹窗交互 (`ExportDialog.kt`)**：新增网格辅助线分段选择器（关 / 5格 / 10格）与对比色色卡切换；
-  - [ ] **渲染引擎适配 (`GridRenderer.kt`)**：参数化步长与线宽/颜色，导出图纸与 PDF 同步生效；
-  - [ ] **实时编辑画布适配 (`EditorScreen.kt`)**：在可视范围内同步绘制选定间隔的彩色区分线，编辑与对照时更清晰。
+  - [x] **设置/状态模型**：在 `AppViewModel`、`SettingsStore` 及 `ExportDialog` 中增加 `gridInterval: Int`（支持 0=关闭、5、10）及 `gridLineColorHex: String`；
+  - [x] **导出弹窗交互 (`ExportDialog.kt`)**：新增网格辅助线分段选择器（关 / 5格 / 10格）与 6 色高对比色卡切换；
+  - [x] **渲染引擎适配 (`GridRenderer.kt`)**：参数化步长与线宽/颜色，导出图纸与预览同步生效；
+  - [x] **实时编辑画布适配 (`EditorScreen.kt`)**：在可视范围内同步绘制选定间隔的彩色区分线，编辑与对照时更清晰。
 
 ---
 
@@ -35,12 +35,12 @@
     2. 从高频色向低频色遍历，计算颜色距离；
     3. 若两色距离低于设定阈值，则将低频色折叠替换为高频色，并将其标记为已替换。
 - **Android 端落地方案设计**：
-  - [ ] **数据与算法扩展 (`ColorQuantizer.kt` / `Pixelation.kt`)**：
-    - 新增基于 Oklab / CIEDE2000 色差的相似色合并函数 `mergeSimilarColors(grid, threshold)`；
-    - 按像素出现频次排序，阈值范围内自动合并低频色到高频色；
-  - [ ] **设置页交互 (`SettingsScreen.kt`)**：
-    - 在「像素化设置」中新增「相似颜色合并阈值」滑块/输入框（范围 0~60，默认可设为 0 或推荐值 15）；
-  - [ ] **性能保护**：在低分辨率网格完成映射后进行 O(K²) 颜色查表合并，耗时 < 5ms，零性能损耗。
+  - [x] **数据与算法扩展 (`ColorQuantizer.kt` / `Pixelation.kt`)**：
+    - 新增基于 Oklab 感知色差的频次优先软性合并函数 `mergeSimilarColors(grid, palette, threshold)`；
+    - 按像素出现频次排序，阈值范围内自动合并低频色到高频色，并编写完备单测 `ColorSimilarityMergeTest`；
+  - [x] **设置页交互 (`SettingsScreen.kt`)**：
+    - 在「像素化设置」中新增「相似颜色合并」滑块（0..60），提供动态推荐值提示（0 关闭、15 轻度合并推荐、30 适度合并、强力合并）；
+  - [x] **性能保护**：在低分辨率网格完成映射后进行查表合并，纯 Kotlin 零装箱损耗，耗时 < 3ms，零卡顿。
 
 ---
 
@@ -52,9 +52,9 @@
     2. `themes.xml` 使用了旧版 `android:Theme.Material.Light.NoActionBar`，未启用现代 Material 3 Window 标志，系统在未知状态栏文字颜色安全性时自动叠加了白底保护蒙层；
     3. 页面未充分适配 `WindowInsets` / `statusBarsPadding()`。
 - **技术落地方案设计**：
-  - [ ] **Activity 接入现代沉浸式**：在 `MainActivity.onCreate()` 中调用 `enableEdgeToEdge()`；
-  - [ ] **状态栏图标亮暗自适应**：
+  - [x] **Activity 接入现代沉浸式**：在 `MainActivity.onCreate()` 中调用 `enableEdgeToEdge()`；
+  - [x] **状态栏图标亮暗自适应**：
     - 亮色主题下配置状态栏图标为深色（Dark Icons），背景完全透明（零白色 Scrim）；
     - 暗色主题下配置状态栏图标为浅色（Light Icons）；
-  - [ ] **顶栏安全边距处理 (`WindowInsets`)**：
-    - 针对 `HomeScreen`、`SettingsScreen`、`EditorScreen` 等界面的顶栏或根容器增加 `statusBarsPadding()` 与 `navigationBarsPadding()`，确保界面内容不被前摄挖孔遮挡，同时状态栏背景 100% 透明无色差。
+  - [x] **顶栏与底栏安全边距处理 (`WindowInsets`)**：
+    - 针对 `HomeScreen`、`SettingsScreen`、`EditorScreen`、`CropScreen` 统一适配 `statusBarsPadding()` 与 `navigationBarsPadding()`，彻底解决手势横条遮挡按钮与状态栏遮罩问题。

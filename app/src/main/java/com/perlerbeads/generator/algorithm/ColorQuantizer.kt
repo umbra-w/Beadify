@@ -176,4 +176,108 @@ object ColorQuantizer {
             result
         }
     }
+
+    /**
+     * 相似颜色合并（基于 Oklab 色彩空间的频次优先软性合并）。
+     *
+     * 算法逻辑：
+     * 1. 统计当前网格中非外部、非透明格子的颜色使用频次；
+     * 2. 按频次降序排序，由使用最多的颜色作为聚类主色（anchor）；
+     * 3. 遍历后续次要颜色，若与某一已保留的主色在 Oklab 空间色差 <= threshold，则建立重映射；
+     * 4. 批量替换网格像素，保持纯函数式不可变性与高度确定性。
+     *
+     * @param grid 当前待处理的网格
+     * @param palette 完整或可用色板（用于查找/构造色号）
+     * @param threshold 色差容差阈值（0 表示不合并，1..60，推荐 15）
+     * @return 消除相似孤立色后的新网格
+     */
+    fun mergeSimilarColors(
+        grid: Array<Array<com.perlerbeads.generator.model.MappedPixel>>,
+        palette: List<PaletteColor>,
+        threshold: Int
+    ): Array<Array<com.perlerbeads.generator.model.MappedPixel>> {
+        if (threshold <= 0 || grid.isEmpty() || grid[0].isEmpty()) return grid
+
+        val paletteByKey = palette.associateBy { it.key }
+
+        // 1. 统计有效非透明格子的频次
+        val freqMap = HashMap<String, Int>()
+        for (row in grid) {
+            for (cell in row) {
+                if (!cell.isExternal && cell.key != com.perlerbeads.generator.model.TRANSPARENT_KEY) {
+                    freqMap[cell.key] = (freqMap[cell.key] ?: 0) + 1
+                }
+            }
+        }
+        if (freqMap.size <= 1) return grid
+
+        // 2. 按频次降序排序（频次相同按 key 字典序稳定排列）
+        val sortedKeys = freqMap.keys.sortedWith(
+            compareByDescending<String> { freqMap[it] ?: 0 }.thenBy { it }
+        )
+
+        // 3. 建立重映射表：高频色吸收相近的低频色
+        val remap = HashMap<String, String>() // lowFreqKey -> targetMainKey
+        val activeKeys = mutableListOf<String>()
+
+        fun resolveColor(key: String): PaletteColor? {
+            return paletteByKey[key] ?: run {
+                for (row in grid) {
+                    for (cell in row) {
+                        if (cell.key == key) {
+                            val rgb = hexToRgb(cell.colorHex) ?: RgbColor(0, 0, 0)
+                            return PaletteColor(key, cell.colorHex, rgb)
+                        }
+                    }
+                }
+                null
+            }
+        }
+
+        for (candidateKey in sortedKeys) {
+            val candidateColor = resolveColor(candidateKey) ?: continue
+            var mergedInto: String? = null
+
+            for (mainKey in activeKeys) {
+                val mainColor = resolveColor(mainKey) ?: continue
+                val dist = ColorMath.oklabDistance(candidateColor.rgb, mainColor.rgb)
+                if (dist <= threshold) {
+                    mergedInto = mainKey
+                    break
+                }
+            }
+
+            if (mergedInto != null) {
+                remap[candidateKey] = mergedInto
+            } else {
+                activeKeys.add(candidateKey)
+            }
+        }
+
+        if (remap.isEmpty()) return grid
+
+        // 4. 重建网格
+        val m = grid.size
+        val n = grid[0].size
+        return Array(m) { r ->
+            Array(n) { c ->
+                val cell = grid[r][c]
+                if (!cell.isExternal && cell.key != com.perlerbeads.generator.model.TRANSPARENT_KEY) {
+                    val targetKey = remap[cell.key]
+                    if (targetKey != null) {
+                        val targetColor = resolveColor(targetKey)
+                        if (targetColor != null) {
+                            com.perlerbeads.generator.model.MappedPixel(targetColor.key, targetColor.hex, false)
+                        } else {
+                            cell
+                        }
+                    } else {
+                        cell
+                    }
+                } else {
+                    cell
+                }
+            }
+        }
+    }
 }

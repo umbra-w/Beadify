@@ -46,7 +46,8 @@ fun calculatePixelGrid(
     fallback: PaletteColor,
     dithering: Boolean = false,
     maxColors: Int = 0,
-    cleanupIslands: Boolean = false
+    cleanupIslands: Boolean = false,
+    similarityThreshold: Int = 0
 ): Array<Array<MappedPixel>> {
     // 性能关键保护：如果原图分辨率远超拼豆网格所需（如 3000x4000 照片），
     // 自适应下采样到高质量超采样尺寸（每个格子对应 3~4 个采样像素，上限 800px），
@@ -132,7 +133,12 @@ fun calculatePixelGrid(
         }
     }
 
-    // 3. 如果开启了噪点清理，平滑 1 格孤岛并保护连续线条与笔画
+    // 3. 如果开启了相似颜色合并，基于 Oklab 色差频次优先归并微小散色
+    if (similarityThreshold > 0) {
+        grid = ColorQuantizer.mergeSimilarColors(grid, activePalette, similarityThreshold)
+    }
+
+    // 4. 如果开启了噪点清理，平滑 1 格孤岛并保护连续线条与笔画
     if (cleanupIslands) {
         grid = IslandCleanup.cleanupSpeckles(grid, maxIslandSize = 1, protectDiagonalLines = true)
     }

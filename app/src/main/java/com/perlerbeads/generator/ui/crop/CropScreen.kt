@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -315,7 +316,11 @@ fun CropScreen(vm: AppViewModel) {
             }
         }
 
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(16.dp)
+        ) {
             Button(
                 onClick = { vm.onCropDone(cropBitmap(bmp, rect)) },
                 modifier = Modifier.fillMaxWidth().height(52.dp)

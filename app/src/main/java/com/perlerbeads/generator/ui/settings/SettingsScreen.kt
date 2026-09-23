@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,11 +50,16 @@ fun SettingsScreen(vm: AppViewModel) {
     var gridShape by remember { mutableStateOf(vm.settings.gridShape) }
     var dithering by remember { mutableStateOf(vm.settings.dithering) }
     var maxColors by remember { mutableIntStateOf(vm.settings.maxColors) }
+    var similarityThreshold by remember { mutableFloatStateOf(vm.settings.similarityThreshold.toFloat()) }
     var cleanupIslands by remember { mutableStateOf(vm.settings.cleanupIslands) }
     var circleOffsetX by remember { mutableFloatStateOf(vm.settings.circleOffsetX) }
     var circleOffsetY by remember { mutableFloatStateOf(vm.settings.circleOffsetY) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+    ) {
         TopAppBar(
             title = { Text("像素化设置") },
             navigationIcon = {
@@ -143,6 +149,29 @@ fun SettingsScreen(vm: AppViewModel) {
                     )
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
+
+            // 相似颜色合并 (Similarity Threshold)
+            val stVal = similarityThreshold.toInt()
+            val stDesc = when {
+                stVal == 0 -> "0（关闭）"
+                stVal <= 15 -> "$stVal（轻度合并 · 推荐）"
+                stVal <= 30 -> "$stVal（适度合并）"
+                else -> "$stVal（强力合并）"
+            }
+            Text("相似颜色合并：$stDesc", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "基于 Oklab 感知色差，自动将微量散色归并至相邻高频主色，减少购买色号，避免杂色",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Slider(
+                value = similarityThreshold,
+                onValueChange = { similarityThreshold = it },
+                valueRange = 0f..60f,
+                steps = 11
+            )
 
             Spacer(Modifier.height(16.dp))
 
@@ -299,6 +328,7 @@ fun SettingsScreen(vm: AppViewModel) {
                         vm.settings.gridShape = gridShape
                         vm.settings.dithering = dithering
                         vm.settings.maxColors = maxColors
+                        vm.settings.similarityThreshold = similarityThreshold.toInt()
                         vm.settings.cleanupIslands = cleanupIslands
                         vm.settings.circleOffsetX = circleOffsetX
                         vm.settings.circleOffsetY = circleOffsetY
