@@ -12,3 +12,9 @@ release/
 *.apk
 test_real_photo.jpg
 *.jpg
+
+# Test and automation artifacts
+scripts/artifacts/
+scripts/output/
+test_artifacts/
+*.dump.xml

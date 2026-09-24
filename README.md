@@ -148,6 +148,7 @@ adb shell am start -n com.perlerbeads.generator/.MainActivity
 - [标准化测试规范说明书](./docs/TEST_SPECIFICATION.md)
 - [全量测试执行与真机报告](./docs/TEST_REPORT.md)
 - [算法质量基准对比报告](./docs/benchmarks/ALGORITHM_BENCHMARK_REPORT.md)
+- [端到端自动化测试工具集说明](./scripts/README.md)
 
 ---
 
