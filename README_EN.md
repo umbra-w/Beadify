@@ -147,11 +147,27 @@ python scripts/run_full_feature_e2e.py
 
 ---
 
-## License and Acknowledgements
+## References & Acknowledgements
 
-- This project is open-source under the [MIT License](LICENSE).
-- Bundled font assets are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/):
-  - **Ark Pixel Font**: Created by [TakWolf](https://github.com/TakWolf/ark-pixel-font).
-  - **Fusion Pixel Font**: Created by [TakWolf](https://github.com/TakWolf/fusion-pixel-font).
-  - **Press Start 2P**: Created by CodeMan38, hosted on [Google Fonts](https://fonts.google.com/specimen/Press+Start+2P).
-- Color space conversion algorithms build upon Björn Ottosson's [Oklab](https://bottosson.github.io/posts/oklab/) research.
+Beadify draws significant inspiration and reference from the vibrant fuse bead and pixel art open-source communities. We gratefully acknowledge the following projects and contributors:
+
+### Fuse Bead Open-Source Ecosystem
+- **[perler-beads](https://github.com/zippland/perler-beads)** (zippland) & **[PindouAI / perler-beads-ai](https://github.com/xuange6610/PindouAI)** (xuange6610): Innovative web-based bead generator prototypes and exploration projects that inspired our initial dual-mode quantization concepts and core workflow.
+- **[QiaoGrid](https://github.com/xiaoxuesheng123467/QiaoGrid)** (xiaoxuesheng123467): An exceptional mobile fuse bead tool that provided invaluable design inspiration and practical experience for palette presentation, spotlight assembly assistance, and edge background removal.
+- **[BeadPalette](https://github.com/liberatrrot/BeadPalette)** (liberatrrot): Color palette exploration tool for multi-brand color cross-referencing and inventory organization.
+- **[beadcolors](https://github.com/maxcleme/beadcolors)** (maxcleme): Comprehensive international fuse bead brand color codes, names, and standardized HEX datasets.
+- **[pindou-format-tool](https://github.com/GarrusHuang/pindou-format-tool)** (GarrusHuang): Domestic fuse bead palette and pattern format interchange utility.
+
+### Open-Source Typography
+- **[Ark Pixel Font](https://github.com/TakWolf/ark-pixel-font)**: Created by TakWolf, licensed under the SIL Open Font License 1.1.
+- **[Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)**: Created by TakWolf, comprehensive CJK character set, licensed under the SIL Open Font License 1.1.
+- **[Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P)**: Created by CodeMan38, hosted on Google Fonts, licensed under the SIL Open Font License 1.1.
+
+### Algorithms and Standards
+- **[Oklab](https://bottosson.github.io/posts/oklab/)**: Perceptually uniform color space model and color difference formulas by Björn Ottosson, utilized for perceptual color interpolation and nearest-neighbor physical palette matching.
+
+---
+
+## License
+
+This project is open-source under the [MIT License](LICENSE).

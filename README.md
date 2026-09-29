@@ -147,11 +147,27 @@ python scripts/run_full_feature_e2e.py
 
 ---
 
-## 开源协议与致谢
+## 项目参考与致谢
 
-- 本项目基于 [MIT License](LICENSE) 开源。
-- 内置字体资产遵循 [SIL Open Font License 1.1](https://openfontlicense.org/) 授权：
-  - **方舟像素字体 (Ark Pixel Font)**：由 [TakWolf](https://github.com/TakWolf/ark-pixel-font) 创作。
-  - **缝合像素字体 (Fusion Pixel Font)**：由 [TakWolf](https://github.com/TakWolf/fusion-pixel-font) 创作。
-  - **Press Start 2P**：由 CodeMan38 创作，托管于 [Google Fonts](https://fonts.google.com/specimen/Press+Start+2P)。
-- 色彩空间算法参考了 Björn Ottosson 的 [Oklab](https://bottosson.github.io/posts/oklab/) 研究成果。
+Beadify 在设计与演进过程中，充分汲取了拼豆与像素艺术开源社区的优秀成果，特此向以下项目与开发者致以诚挚感谢：
+
+### 拼豆开源生态
+- **[perler-beads](https://github.com/zippland/perler-beads)**（zippland）与 **[PindouAI / perler-beads-ai](https://github.com/xuange6610/PindouAI)**（xuange6610）：优秀的网页端拼豆生成器原型与探索项目，启发了初始双模式色彩量化思路与业务流程设计。
+- **[QiaoGrid 巧格](https://github.com/xiaoxuesheng123467/QiaoGrid)**（xiaoxuesheng123467）：优秀的移动端开源拼豆工具，为色板呈现、聚光灯施工辅助与边缘去背景提供了设计灵感与宝贵经验。
+- **[BeadPalette](https://github.com/liberatrrot/BeadPalette)**（liberatrrot）：拼豆色卡调色板工具，为多品牌色号对照及个人豆仓管理提供了参考。
+- **[beadcolors](https://github.com/maxcleme/beadcolors)**（maxcleme）：国际主流拼豆品牌色号、名称与标准 HEX 基准数据集。
+- **[pindou-format-tool](https://github.com/GarrusHuang/pindou-format-tool)**（GarrusHuang）：国内拼豆色板与图纸格式互通工具。
+
+### 开源字体
+- **[方舟像素字体 (Ark Pixel Font)](https://github.com/TakWolf/ark-pixel-font)**：由 TakWolf 创作，基于 SIL Open Font License 1.1 协议开源。
+- **[缝合像素字体 (Fusion Pixel Font)](https://github.com/TakWolf/fusion-pixel-font)**：由 TakWolf 创作，全 CJK 字符覆盖，基于 SIL Open Font License 1.1 协议开源。
+- **[Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P)**：由 CodeMan38 创作，托管于 Google Fonts，基于 SIL Open Font License 1.1 协议开源。
+
+### 算法与标准
+- **[Oklab](https://bottosson.github.io/posts/oklab/)**：Björn Ottosson 的感知均匀色彩空间模型与颜色差异算法，用于色彩感知插值与色板最近邻匹配。
+
+---
+
+## 开源协议
+
+本项目基于 [MIT License](LICENSE) 开源。
