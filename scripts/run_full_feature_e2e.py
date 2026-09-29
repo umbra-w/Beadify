@@ -277,23 +277,41 @@ def run_full_suite(controller: AdbDeviceController, skip_screen_off=False, suite
         controller.tap(tx, ty, desc="进入文字拼豆模块", delay=2.0)
         controller.capture("24_text_beads_screen")
 
-        # 输入文本
-        controller.tap(360, 360, desc="聚焦文字输入框", delay=0.5)
+        # 输入文本 (聚焦 [40, 248][680, 374] 输入框)
+        controller.tap(360, 311, desc="聚焦文字输入框", delay=0.5)
         controller.input_text("LOVE", desc="输入 LOVE 字符")
+        controller.keyevent(4, desc="收起软键盘")
         controller.capture("25_text_beads_love_inputted")
 
-        # 选择 32 行高度 (240, 520)
-        controller.tap(240, 520, desc="设置字号高度为 32 行", delay=0.5)
-        # 选取 Artkal C03 颜色 (330, 750)
-        controller.tap(330, 750, desc="选取字符颜色", delay=0.5)
-        # 切换背景填白开关 (160, 860)
-        controller.tap(160, 860, desc="勾选背景填白", delay=0.5)
+        # 选择像素字体：方舟像素 12px
+        f_chip = controller.find_node("方舟像素")
+        fx, fy = f_chip if f_chip else (450, 520)
+        controller.tap(fx, fy, desc="切换至方舟像素 12px 字体", delay=0.5)
+
+        # 切换颜色模式：渐变
+        g_chip = controller.find_node("渐变")
+        if g_chip:
+            controller.tap(g_chip[0], g_chip[1], desc="切换至渐变色模式", delay=0.5)
+
+        # 向上滑动展示描边与投影设置
+        controller.swipe(360, 1200, 360, 500, 300, desc="向下滑动展示特效设置")
+        time.sleep(0.5)
+
+        # 开启描边开关
+        outline_node = controller.find_node("描边")
+        if outline_node:
+            controller.tap(outline_node[0] + 160, outline_node[1], desc="开启文字描边", delay=0.5)
+
         controller.capture("26_text_beads_configured")
+
+        # 滑动到底部生成
+        controller.swipe(360, 1400, 360, 400, 300, desc="滑动至底部生成按钮")
+        time.sleep(0.5)
 
         # 生成并切入编辑器
         gen_btn = controller.find_node("生成并进入编辑器")
-        gx, gy = gen_btn if gen_btn else (360, 1024)
-        controller.tap(gx, gy, desc="生成文字图纸并切入编辑器", delay=3.0)
+        gx, gy = gen_btn if gen_btn else (360, 1400)
+        controller.tap(gx, gy, desc="生成文字图纸并切入编辑器", delay=3.5)
         controller.capture("27_text_beads_in_editor")
 
         # 返回首页
@@ -332,9 +350,11 @@ def run_full_suite(controller: AdbDeviceController, skip_screen_off=False, suite
         t_card = controller.find_node("文字拼豆")
         tx, ty = t_card if t_card else (360, 980)
         controller.tap(tx, ty, desc="快速进入文字拼豆", delay=1.5)
+        controller.swipe(360, 1400, 360, 400, 300, desc="滑动至底部生成按钮")
+        time.sleep(0.5)
         gen_btn = controller.find_node("生成并进入编辑器")
-        gx, gy = gen_btn if gen_btn else (360, 1024)
-        controller.tap(gx, gy, desc="切入编辑器", delay=3.0)
+        gx, gy = gen_btn if gen_btn else (360, 1400)
+        controller.tap(gx, gy, desc="切入编辑器", delay=3.5)
 
         # 打开导出底栏弹窗 (664, 144)
         controller.tap(664, 144, desc="打开导出全功能底栏", delay=1.5)
