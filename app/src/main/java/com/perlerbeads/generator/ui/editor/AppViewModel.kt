@@ -60,6 +60,12 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.max
+import android.graphics.Typeface
+import com.perlerbeads.generator.algorithm.TextBeadStyle
+import com.perlerbeads.generator.algorithm.TextColorMode
+import com.perlerbeads.generator.algorithm.TextShadowConfig
+import com.perlerbeads.generator.algorithm.TextOutlineConfig
+import com.perlerbeads.generator.model.PixelFont
 
 /** 应用级共享状态与编辑操作。 */
 private const val DEFAULT_AI_PROMPT =
@@ -826,7 +832,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var textBeadBgWhite by mutableStateOf(false)
     var textBeadColor by mutableStateOf<PaletteColor?>(null)
 
-    /** 由文字直接生成网格（笔画用所选颜色，背景透明或填白），成功后进入编辑器。 */
+    // 进阶功能状态
+    var textBeadFont by mutableStateOf(PixelFont.SYSTEM)
+    var textBeadColorMode by mutableStateOf(TextColorMode.SINGLE)
+    var textBeadGradientEndColor by mutableStateOf<PaletteColor?>(null)
+    var textBeadShadowEnabled by mutableStateOf(false)
+    var textBeadShadowColor by mutableStateOf<PaletteColor?>(null)
+    var textBeadOutlineEnabled by mutableStateOf(false)
+    var textBeadOutlineColor by mutableStateOf<PaletteColor?>(null)
+
+    // 字体缓存，避免重复从 assets 加载
+    private val typefaceCache = mutableMapOf<PixelFont, Typeface>()
+
+    private fun loadTypeface(font: PixelFont): Typeface? {
+        if (font.isSystem) return null
+        return typefaceCache.getOrPut(font) {
+            Typeface.createFromAsset(getApplication<Application>().assets, font.assetPath)
+        }
+    }
+
+    /** 由文字直接生成网格，成功后进入编辑器。 */
     fun generateTextBeads() {
         val c = textBeadColor ?: activePalette.firstOrNull() ?: run {
             toast = "当前色板为空，请先在色板设置中选择颜色"
@@ -845,10 +870,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 (255 - r) * (255 - r) + (255 - g2) * (255 - g2) + (255 - b) * (255 - b)
             }
         } else null
+
+        // 构建进阶风格
+        val shadow = if (textBeadShadowEnabled) {
+            val sc = textBeadShadowColor ?: activePalette.minByOrNull {
+                // 默认用最深色做阴影
+                val rgb = hexToRgb(it.hex) ?: return@minByOrNull Int.MAX_VALUE
+                rgb.r + rgb.g + rgb.b
+            } ?: c
+            TextShadowConfig(offsetCol = 1, offsetRow = 1, color = sc)
+        } else null
+
+        val outline = if (textBeadOutlineEnabled) {
+            val oc = textBeadOutlineColor ?: activePalette.minByOrNull {
+                val rgb = hexToRgb(it.hex) ?: return@minByOrNull Int.MAX_VALUE
+                rgb.r + rgb.g + rgb.b
+            } ?: c
+            TextOutlineConfig(thickness = 1, color = oc)
+        } else null
+
+        val style = TextBeadStyle(
+            colorMode = textBeadColorMode,
+            primaryColor = c,
+            secondaryColor = if (textBeadColorMode == TextColorMode.GRADIENT)
+                (textBeadGradientEndColor ?: activePalette.lastOrNull() ?: c) else null,
+            shadow = shadow,
+            outline = outline,
+            typeface = loadTypeface(textBeadFont),
+            palette = activePalette
+        )
+
         processing = true
         viewModelScope.launch {
             val result = withContext(Dispatchers.Default) {
-                com.perlerbeads.generator.algorithm.TextBeads.renderTextGrid(textBeadText, textBeadRows, c, true, bg)
+                com.perlerbeads.generator.algorithm.TextBeads.renderTextGrid(
+                    textBeadText, textBeadRows, style, true, bg
+                )
             }
             processing = false
             if (result == null) {
@@ -866,6 +923,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             screen = Screen.Editor
         }
     }
+
 
     // ---------- 图纸 CSV 导入 ----------
 

@@ -76,6 +76,44 @@ object ColorMath {
         return o1.distance(o2)
     }
 
+    /** 线性通道值转 sRGB 8-bit。 */
+    fun linearToSrgb(c: Double): Int {
+        val clamped = c.coerceIn(0.0, 1.0)
+        val v = if (clamped <= 0.0031308) {
+            clamped * 12.92
+        } else {
+            1.055 * clamped.pow(1.0 / 2.4) - 0.055
+        }
+        return (v * 255.0 + 0.5).toInt().coerceIn(0, 255)
+    }
+
+    /** Oklab 转 sRGB (反向变换)。 */
+    fun oklabToRgb(lab: Oklab): RgbColor {
+        val lRoot = lab.l + 0.3963377774 * lab.a + 0.2158037573 * lab.b
+        val mRoot = lab.l - 0.1055613458 * lab.a - 0.0638541728 * lab.b
+        val sRoot = lab.l - 0.0894841775 * lab.a - 1.2914855480 * lab.b
+
+        val lCone = lRoot * lRoot * lRoot
+        val mCone = mRoot * mRoot * mRoot
+        val sCone = sRoot * sRoot * sRoot
+
+        val lr = +4.0767416621 * lCone - 3.3077115913 * mCone + 0.2309699292 * sCone
+        val lg = -1.2684380046 * lCone + 2.6097574011 * mCone - 0.3413193965 * sCone
+        val lb = -0.0041960863 * lCone - 0.7034186147 * mCone + 1.7076147010 * sCone
+
+        return RgbColor(linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb))
+    }
+
+    /** Oklab 线性插值。t ∈ [0,1]，0 → a，1 → b。 */
+    fun lerpOklab(a: Oklab, b: Oklab, t: Double): Oklab {
+        val t1 = t.coerceIn(0.0, 1.0)
+        return Oklab(
+            l = a.l + (b.l - a.l) * t1,
+            a = a.a + (b.a - a.a) * t1,
+            b = a.b + (b.b - a.b) * t1
+        )
+    }
+
     /**
      * 在给定色板中寻找 Oklab 感知距离最接近的颜色。
      * 使用 distanceSquared 比较，避免循环内频繁调用 sqrt。
