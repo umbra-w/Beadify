@@ -64,7 +64,7 @@ fun TextBeadsScreen(vm: AppViewModel) {
         TopAppBar(
             title = { Text("文字拼豆") },
             navigationIcon = {
-                TextButton(onClick = { vm.navigate(Screen.Home) }) { Text("返回") }
+                TextButton(onClick = { vm.goBack() }) { Text("返回") }
             }
         )
 

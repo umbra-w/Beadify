@@ -51,6 +51,7 @@ import com.perlerbeads.generator.model.RgbColor
 import com.perlerbeads.generator.model.TRANSPARENT_KEY
 import com.perlerbeads.generator.model.circleGeometry
 import com.perlerbeads.generator.model.transparentColorData
+import com.perlerbeads.generator.navigation.NavigationManager
 import com.perlerbeads.generator.navigation.Screen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -81,8 +82,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var currentBrand by mutableStateOf(settings.beadBrand)
         private set
 
+    private val navManager = NavigationManager(Screen.Home)
+
     var screen by mutableStateOf<Screen>(Screen.Home)
         private set
+
+    fun canGoBack(): Boolean = navManager.canGoBack
 
     var bitmap by mutableStateOf<Bitmap?>(null)
         private set
@@ -299,7 +304,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         gridData = null
         stats = null
         circleFrame = null
-        screen = Screen.Crop
+        navigate(Screen.Crop)
     }
 
     fun onCropDone(bmp: Bitmap) {
@@ -307,15 +312,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         gridData = null
         stats = null
         circleFrame = null
-        screen = Screen.Settings
+        navigate(Screen.Settings)
     }
 
     fun goHome() {
-        screen = Screen.Home
+        navManager.goHome()
+        screen = navManager.current
     }
 
     fun navigate(target: Screen) {
-        screen = target
+        navManager.navigate(target)
+        screen = navManager.current
+    }
+
+    fun goBack(): Boolean {
+        val changed = navManager.goBack()
+        screen = navManager.current
+        return changed
     }
 
     // ---------- 生成 ----------
@@ -366,7 +379,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clearEditHistory()
                 recomputeStats()
                 selectedPaintColor = gridPalette.firstOrNull()
-                screen = Screen.Editor
+                navigate(Screen.Editor)
             } catch (e: Throwable) {
                 android.util.Log.e("AppViewModel", "generate failed", e)
                 toast = "生成图纸失败: ${e.message ?: "未知错误"}"
@@ -739,7 +752,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         spotlightKey = null
         currentBoard = firstIncompleteBoard(g)
-        screen = Screen.BoardWork
+        navigate(Screen.BoardWork)
     }
 
     fun changeBoardSize(size: Int) {
@@ -920,7 +933,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             recomputeStats()
             selectedPaintColor = c
             toast = null
-            screen = Screen.Editor
+            navigate(Screen.Editor)
         }
     }
 
@@ -942,7 +955,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             recomputeStats()
             selectedPaintColor = activePalette.firstOrNull()
             toast = "已导入图纸：${grid.n}×${grid.m} 格"
-            screen = Screen.Editor
+            navigate(Screen.Editor)
         } catch (e: Exception) {
             toast = "导入失败：${e.message ?: "格式错误"}"
         }
@@ -993,7 +1006,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         recomputeStats()
         selectedPaintColor = gridPalette.firstOrNull()
         toast = "已打开项目"
-        screen = Screen.Editor
+        navigate(Screen.Editor)
     }
 
     fun deleteProject(id: String) {

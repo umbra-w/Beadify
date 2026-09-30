@@ -227,10 +227,7 @@ fun EditorScreen(vm: AppViewModel) {
                     Text("图纸 ${grid.n}×${grid.m}", style = MaterialTheme.typography.titleSmall)
                 },
                 navigationIcon = {
-                    // 无源图（文字拼豆/打开的项目）时返回首页，避免进入空白裁剪页
-                    TextButton(onClick = {
-                        if (vm.bitmap != null) vm.navigate(Screen.Settings) else vm.navigate(Screen.Home)
-                    }) { Text("返回") }
+                    TextButton(onClick = { vm.goBack() }) { Text("返回") }
                 },
                 actions = {
                     IconButton(onClick = { vm.enterBoardWork() }) {

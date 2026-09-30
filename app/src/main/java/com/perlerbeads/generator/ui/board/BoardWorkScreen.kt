@@ -128,7 +128,7 @@ fun BoardWorkScreen(vm: AppViewModel) {
                 }
             },
             navigationIcon = {
-                TextButton(onClick = { vm.navigate(Screen.Editor) }) {
+                TextButton(onClick = { vm.goBack() }) {
                     Text("返回")
                 }
             }

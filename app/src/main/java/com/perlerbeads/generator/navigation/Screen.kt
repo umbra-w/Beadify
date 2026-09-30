@@ -11,12 +11,12 @@ sealed interface Screen {
     data object TextBeads : Screen
     data object Projects : Screen
 
-    /** 返回上一页。Home 无上一页。 */
+    /** 返回上一页默认映射（仅作为无堆栈时的保底回退）。Home 无上一页。 */
     fun back(): Screen? = when (this) {
         Crop -> Home
         Settings -> Crop
-        Editor -> Settings
-        Palette -> Settings
+        Editor -> Home
+        Palette -> Home
         BoardWork -> Editor
         TextBeads -> Home
         Projects -> Home

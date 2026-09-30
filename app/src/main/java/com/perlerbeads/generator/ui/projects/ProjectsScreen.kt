@@ -49,7 +49,7 @@ fun ProjectsScreen(vm: AppViewModel) {
         TopAppBar(
             title = { Text("我的项目") },
             navigationIcon = {
-                TextButton(onClick = { vm.navigate(Screen.Home) }) { Text("返回") }
+                TextButton(onClick = { vm.goBack() }) { Text("返回") }
             }
         )
 

@@ -114,11 +114,10 @@ fun PaletteManagerScreen(vm: AppViewModel) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        val returnTarget = if (vm.bitmap != null) Screen.Settings else Screen.Home
         TopAppBar(
             title = { Text("色板与豆仓") },
             navigationIcon = {
-                TextButton(onClick = { vm.navigate(returnTarget) }) { Text("返回") }
+                TextButton(onClick = { vm.goBack() }) { Text("返回") }
             },
             actions = {
                 TextButton(onClick = {
@@ -127,7 +126,7 @@ fun PaletteManagerScreen(vm: AppViewModel) {
                     // 一次性原子批量持久化豆仓库存
                     vm.inventoryStore.saveAllStock(selectedBrand, stockSelections.toMap())
                     vm.refreshActivePalette()
-                    vm.navigate(returnTarget)
+                    vm.goBack()
                 }) { Text("保存并应用") }
             }
         )

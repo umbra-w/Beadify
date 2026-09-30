@@ -81,7 +81,7 @@ fun CropScreen(vm: AppViewModel) {
         TopAppBar(
             title = { Text("裁剪图片") },
             navigationIcon = {
-                TextButton(onClick = { vm.goHome() }) { Text("取消") }
+                TextButton(onClick = { vm.goBack() }) { Text("取消") }
             }
         )
 
